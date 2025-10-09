@@ -1,50 +1,58 @@
 "use client";
-
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-function maskCPF(v: string) {
-  return v.replace(/\D/g, "").slice(0, 11)
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-}
-function maskPhone(v: string) {
-  const s = v.replace(/\D/g, "").slice(0, 11);
-  if (s.length <= 10) return s.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").trim();
-  return s.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3").trim();
-}
-
 export default function RegisterPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [birthDate, setBirthDate] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    cpf: "",
+    birthDate: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: ""
+  });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  function update<K extends keyof typeof form>(k: K, v: string) {
+    setForm((f) => ({ ...f, [k]: v }));
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setErr(null);
+
+    if (form.password.length < 8) {
+      setErr("A senha deve ter pelo menos 8 caracteres");
+      setLoading(false);
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setErr("As senhas não conferem");
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, cpf, birthDate, email, phone }),
+        body: JSON.stringify(form)
       });
-      const data = await res.json();
+      const data = await res.json().catch(()=> ({}));
       if (!res.ok || !data?.ok) {
-        setErr(data?.error?.message ?? "Erro ao criar conta");
-        setLoading(false);
-        return;
+        setErr(data?.error ?? "Erro ao criar conta");
+      } else {
+        // após registrar, levar ao login
+        router.push("/login");
       }
-      router.push("/login");
     } catch {
       setErr("Falha de rede. Tente novamente.");
+    } finally {
       setLoading(false);
     }
   }
@@ -53,12 +61,17 @@ export default function RegisterPage() {
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       <section className="hidden lg:flex items-center justify-center bg-[var(--color-brand-blue)] text-white">
         <div className="max-w-xl px-8">
-          <h2 className="text-4xl font-extrabold leading-tight">Crie sua conta EDUCC</h2>
-          <p className="mt-4 text-white/90">Cadastre-se e acesse a plataforma instalável (PWA).</p>
+          <h2 className="text-4xl font-extrabold leading-tight">
+            Crie sua conta EDUCC
+          </h2>
+          <p className="mt-4 text-white/90">
+            Acesso rápido e seguro.
+          </p>
         </div>
       </section>
+
       <section className="flex items-center justify-center p-6 lg:p-12">
-        <div className="card p-8 max-w-md w-full">
+        <div className="card p-8 max-w-lg w-full">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
@@ -70,36 +83,46 @@ export default function RegisterPage() {
           </div>
 
           <h1 className="text-2xl font-semibold mb-1">Criar conta</h1>
-          <p className="text-sm text-gray-500 mb-6">Preencha seus dados abaixo</p>
+          <p className="text-sm text-gray-500 mb-6">Preencha seus dados</p>
 
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
+          <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
               <label className="block text-sm mb-1">Nome completo</label>
-              <input className="input" type="text" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} />
+              <input className="input" value={form.name} onChange={e=>update("name", e.target.value)} required />
             </div>
             <div>
               <label className="block text-sm mb-1">CPF</label>
-              <input className="input" type="text" inputMode="numeric" placeholder="000.000.000-00"
-                     value={cpf} onChange={(e) => setCpf(maskCPF(e.target.value))} required />
+              <input className="input" value={form.cpf} onChange={e=>update("cpf", e.target.value)} required />
             </div>
             <div>
               <label className="block text-sm mb-1">Data de nascimento</label>
-              <input className="input" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} required />
+              <input className="input" type="date" value={form.birthDate} onChange={e=>update("birthDate", e.target.value)} required />
             </div>
             <div>
               <label className="block text-sm mb-1">E-mail</label>
-              <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+              <input className="input" type="email" value={form.email} onChange={e=>update("email", e.target.value)} required />
             </div>
             <div>
-              <label className="block text-sm mb-1">Telefone (WhatsApp)</label>
-              <input className="input" type="tel" inputMode="tel" placeholder="(00) 00000-0000"
-                     value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} required />
+              <label className="block text-sm mb-1">Telefone (Whats)</label>
+              <input className="input" type="tel" value={form.phone} onChange={e=>update("phone", e.target.value)} required />
             </div>
 
-            {err && <p className="text-sm text-red-600">{err}</p>}
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading ? "Criando..." : "Criar conta"}
-            </button>
+            <div>
+              <label className="block text-sm mb-1">Senha</label>
+              <input className="input" type="password" value={form.password} onChange={e=>update("password", e.target.value)} required minLength={8} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Confirmar senha</label>
+              <input className="input" type="password" value={form.confirmPassword} onChange={e=>update("confirmPassword", e.target.value)} required minLength={8} />
+            </div>
+
+            {err && <p className="sm:col-span-2 text-sm text-red-600">{err}</p>}
+
+            <div className="sm:col-span-2">
+              <button type="submit" className="btn-primary w-full" disabled={loading}>
+                {loading ? "Criando..." : "Criar conta"}
+              </button>
+            </div>
           </form>
         </div>
       </section>

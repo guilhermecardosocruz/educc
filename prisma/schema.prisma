@@ -17,6 +17,8 @@ model User {
   phone     String
   createdAt DateTime @default(now())
 
+  passwordHash String?   // <--- NOVO: hash (opcional p/ compatibilidade)
+
   resetTokens PasswordResetToken[]
   classes     Class[]            @relation("UserClasses")
 }
