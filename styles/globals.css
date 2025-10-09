@@ -4,3 +4,7 @@
   --color-brand-blue: #0A66FF;
 }
 .bg-brand-blue { background-color: var(--color-brand-blue); }
+
+
+/* Utilitário de sombra suave para cards */
+.shadow-soft { box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.08); }
