@@ -72,8 +72,8 @@ model Student {
   classId   String
   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
   name      String
-  cpf       String
-  contact   String   // whatsapp/email/telefone
+  cpf       String?
+  contact   String?  // whatsapp/email/telefone
   createdAt DateTime @default(now())
 }
 
