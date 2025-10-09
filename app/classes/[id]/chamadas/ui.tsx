@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
 type Item = { id: string; seq: number; title: string; createdAt: string };
 type Order = "asc" | "desc";
 
@@ -15,21 +14,14 @@ export default function ChamadasClient({ classId }: { classId: string }) {
   async function load() {
     setLoading(true);
     const res = await fetch(`/api/classes/${classId}/chamadas?order=${order}`, { cache: "no-store" });
-    if (!res.ok) {
-      setError("Falha ao carregar chamadas");
-      setLoading(false);
-      return;
-    }
+    if (!res.ok) { setError("Falha ao carregar chamadas"); setLoading(false); return; }
     const data = await res.json();
     setItems(data?.attendances ?? []);
     setLoading(false);
   }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [order, classId]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [order, classId]);
-
-  const sorted = useMemo(() => {
-    return [...items].sort((a,b) => order === "asc" ? a.seq - b.seq : b.seq - a.seq);
-  }, [items, order]);
+  const sorted = useMemo(() => [...items].sort((a,b)=> order==="asc"? a.seq-b.seq : b.seq-a.seq), [items, order]);
 
   return (
     <div className="mt-6">
@@ -40,23 +32,10 @@ export default function ChamadasClient({ classId }: { classId: string }) {
         >
           ➕ Nova chamada
         </button>
-
         <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur">
           <span className="opacity-90">Ordenar por ID:</span>
-          <button
-            onClick={() => setOrder("asc")}
-            className={`rounded-xl px-3 py-1 ${order==="asc" ? "bg-white text-[var(--color-brand-blue)] shadow" : "text-white/90 hover:bg-white/10"}`}
-            aria-pressed={order==="asc"}
-          >
-            Crescente
-          </button>
-          <button
-            onClick={() => setOrder("desc")}
-            className={`rounded-xl px-3 py-1 ${order==="desc" ? "bg-white text-[var(--color-brand-blue)] shadow" : "text-white/90 hover:bg-white/10"}`}
-            aria-pressed={order==="desc"}
-          >
-            Decrescente
-          </button>
+          <button onClick={()=>setOrder("asc")} className={`rounded-xl px-3 py-1 ${order==="asc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Crescente</button>
+          <button onClick={()=>setOrder("desc")} className={`rounded-xl px-3 py-1 ${order==="desc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Decrescente</button>
         </div>
       </div>
 
