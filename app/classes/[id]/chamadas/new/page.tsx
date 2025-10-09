@@ -19,8 +19,6 @@ export default function NewCallPage() {
   // Adicionar aluno (UI)
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newCpf, setNewCpf] = useState("");
-  const [newContact, setNewContact] = useState("");
   const [adding, setAdding] = useState(false);
 
   // Importação planilha
@@ -54,14 +52,12 @@ export default function NewCallPage() {
     setPresence(all);
   }
 
-  // Adicionar aluno (POST /students)
+  // Adicionar aluno: só nome obrigatório
   async function handleAddStudent() {
     if (!id) return;
     const name = newName.trim();
-    const cpf = newCpf.replace(/\D+/g, "");
-    const contact = newContact.trim();
-    if (name.length < 2 || cpf.length < 11 || contact.length < 5) {
-      alert("Preencha: nome (>=2), CPF (11 dígitos) e contato (>=5).");
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
       return;
     }
     setAdding(true);
@@ -69,15 +65,14 @@ export default function NewCallPage() {
       const res = await fetch(`/api/classes/${id}/students`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, cpf, contact })
+        body: JSON.stringify({ name }) // apenas nome
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao adicionar");
       const st: Student = data.student;
       setStudents((prev) => [st, ...prev]);
       setPresence((p) => ({ ...p, [st.id]: true }));
-      // limpa e fecha o form
-      setNewName(""); setNewCpf(""); setNewContact("");
+      setNewName("");
       setShowAdd(false);
     } catch (e) {
       alert("Erro ao adicionar aluno");
@@ -87,7 +82,7 @@ export default function NewCallPage() {
     }
   }
 
-  // Importação CSV/XLSX
+  // Importação CSV/XLSX (opcional, mantida)
   async function handleImportSend() {
     if (!id || !uploadFile) {
       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
@@ -100,7 +95,6 @@ export default function NewCallPage() {
       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
-      // Recarrega alunos
       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
       const data2 = await res2.json();
       if (data2?.ok && Array.isArray(data2.students)) {
@@ -159,12 +153,12 @@ export default function NewCallPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
-      {/* Breadcrumb */}
       <nav className="mb-4 text-sm">
-        <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">Voltar para Chamadas</Link>
+        <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">
+          Voltar para Chamadas
+        </Link>
       </nav>
 
-      {/* Card principal */}
       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
           <div>
@@ -183,19 +177,21 @@ export default function NewCallPage() {
             <button
               type="button"
               onClick={handleCreate}
-              disabled={saving}
+              disabled={adding || newName.trim().length < 2}
               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Criar chamada"}
             </button>
-            <Link href={`/classes/${id}/chamadas`} className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700">
+            <Link
+              href={`/classes/${id}/chamadas`}
+              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700"
+            >
               Cancelar
             </Link>
           </div>
         </div>
 
         <div className="space-y-5 px-5 py-5">
-          {/* Nome da aula */}
           <div className="grid gap-2">
             <label className="text-sm font-medium text-gray-800">Nome da aula</label>
             <input
@@ -206,12 +202,12 @@ export default function NewCallPage() {
             />
           </div>
 
-          {/* Form Adicionar aluno (compacto) */}
+          {/* Form Adicionar aluno (só nome) */}
           {showAdd && (
             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-end">
                 <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Nome</label>
+                  <label className="text-xs font-medium text-gray-700">Nome do aluno</label>
                   <input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
@@ -219,46 +215,28 @@ export default function NewCallPage() {
                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">CPF (11 dígitos)</label>
-                  <input
-                    value={newCpf}
-                    onChange={(e) => setNewCpf(e.target.value)}
-                    placeholder="Somente números"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAddStudent}
+                    disabled={adding || newName.trim().length < 2}
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {adding ? "Adicionando..." : "Salvar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAdd(false); setNewName(""); }}
+                    className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                  >
+                    Cancelar
+                  </button>
                 </div>
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Contato</label>
-                  <input
-                    value={newContact}
-                    onChange={(e) => setNewContact(e.target.value)}
-                    placeholder="Ex.: (48) 99999-9999"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddStudent}
-                  disabled={adding}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {adding ? "Adicionando..." : "Salvar aluno"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
-                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-                >
-                  Cancelar
-                </button>
               </div>
             </div>
           )}
 
-          {/* Lista de presença (3 colunas: # | Nome (1fr) | ✓ ) */}
+          {/* Lista de presença: # mínimo | Nome 1fr | checkbox mínimo */}
           <div className="rounded-2xl overflow-hidden border">
             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
               <div className="font-semibold">Lista de presença</div>
@@ -341,7 +319,7 @@ export default function NewCallPage() {
                   <button
                     type="button"
                     onClick={handleImportSend}
-                    disabled={!uploadFile || importing}
+                    disabled={adding || newName.trim().length < 2}
                     className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600 disabled:opacity-50"
                   >
                     {importing ? "Enviando..." : "Enviar planilha"}
