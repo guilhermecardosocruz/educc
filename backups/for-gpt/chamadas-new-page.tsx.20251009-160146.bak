@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
 
 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
 
@@ -16,20 +15,11 @@ export default function NewCallPage() {
   const [presence, setPresence] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
 
-  // Adicionar aluno (UI)
-  const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newCpf, setNewCpf] = useState("");
-  const [newContact, setNewContact] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  // Importação planilha
   const [uploadName, setUploadName] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // Carrega alunos
   useEffect(() => {
     (async () => {
       if (!id) return;
@@ -44,7 +34,6 @@ export default function NewCallPage() {
     })();
   }, [id]);
 
-  // Presenças
   function toggleStudent(studentId: string) {
     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
   }
@@ -54,40 +43,6 @@ export default function NewCallPage() {
     setPresence(all);
   }
 
-  // Adicionar aluno (POST /students)
-  async function handleAddStudent() {
-    if (!id) return;
-    const name = newName.trim();
-    const cpf = newCpf.replace(/\D+/g, "");
-    const contact = newContact.trim();
-    if (name.length < 2 || cpf.length < 11 || contact.length < 5) {
-      alert("Preencha: nome (>=2), CPF (11 dígitos) e contato (>=5).");
-      return;
-    }
-    setAdding(true);
-    try {
-      const res = await fetch(`/api/classes/${id}/students`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, cpf, contact })
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao adicionar");
-      const st: Student = data.student;
-      setStudents((prev) => [st, ...prev]);
-      setPresence((p) => ({ ...p, [st.id]: true }));
-      // limpa e fecha o form
-      setNewName(""); setNewCpf(""); setNewContact("");
-      setShowAdd(false);
-    } catch (e) {
-      alert("Erro ao adicionar aluno");
-      console.error(e);
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  // Importação CSV/XLSX
   async function handleImportSend() {
     if (!id || !uploadFile) {
       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
@@ -100,6 +55,7 @@ export default function NewCallPage() {
       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+
       // Recarrega alunos
       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
       const data2 = await res2.json();
@@ -119,7 +75,6 @@ export default function NewCallPage() {
     }
   }
 
-  // Criar chamada + salvar presença
   async function handleCreate() {
     if (!id) return;
     setSaving(true);
@@ -174,23 +129,13 @@ export default function NewCallPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowAdd((s) => !s)}
-              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-              title="Adicionar aluno"
-            >
-              <Plus className="h-4 w-4" aria-hidden /> Adicionar aluno
-            </button>
-            <button
-              type="button"
               onClick={handleCreate}
               disabled={saving}
               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Criar chamada"}
             </button>
-            <Link href={`/classes/${id}/chamadas`} className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700">
-              Cancelar
-            </Link>
+            <Link href={`/classes/${id}/chamadas`} className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700">Cancelar</Link>
           </div>
         </div>
 
@@ -206,58 +151,6 @@ export default function NewCallPage() {
             />
           </div>
 
-          {/* Form Adicionar aluno (compacto) */}
-          {showAdd && (
-            <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Nome</label>
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Ex.: Maria Silva"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">CPF (11 dígitos)</label>
-                  <input
-                    value={newCpf}
-                    onChange={(e) => setNewCpf(e.target.value)}
-                    placeholder="Somente números"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Contato</label>
-                  <input
-                    value={newContact}
-                    onChange={(e) => setNewContact(e.target.value)}
-                    placeholder="Ex.: (48) 99999-9999"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddStudent}
-                  disabled={adding}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {adding ? "Adicionando..." : "Salvar aluno"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
-                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Lista de presença (3 colunas: # | Nome (1fr) | ✓ ) */}
           <div className="rounded-2xl overflow-hidden border">
             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
@@ -270,12 +163,16 @@ export default function NewCallPage() {
               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
             </div>
 
-            <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
-              <div className="px-1.5 py-2 text-center">#</div>
+            {/* Cabeçalho minimalista: # | Nome | (coluna vazia para checkbox) */}
+            <div className="grid grid-cols-[40px_1fr_48px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+              <div className="px-2 py-2 text-center">#</div>
               <div className="px-3 py-2">Aluno</div>
-              <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+              <div className="px-2 py-2 text-center">
+                <span className="sr-only">Presença</span>
+              </div>
             </div>
 
+            {/* Linhas: só nome; índice e checkbox mínimos */}
             <div className="max-h-[60vh] overflow-auto">
               {students.length === 0 ? (
                 <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
@@ -285,21 +182,26 @@ export default function NewCallPage() {
                   <div
                     key={s.id}
                     className={[
-                      "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+                      "grid grid-cols-[40px_1fr_48px] items-center text-sm",
                       "border-b border-blue-100",
                       isEven ? "bg-blue-50/40" : "bg-white"
                     ].join(" ")}
                   >
-                    <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+                    {/* Índice: largura mínima, centralizado */}
+                    <div className="px-2 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+
+                    {/* Nome (coluna maior) */}
                     <div className="px-3 py-2">
                       <div className="font-medium text-gray-900">{s.name}</div>
                     </div>
-                    <div className="px-1.5 py-2 text-center">
+
+                    {/* Checkbox sem texto (só ícone nativo), centralizado */}
+                    <div className="px-2 py-2 text-center">
                       <label className="inline-flex items-center">
                         <span className="sr-only">Marcar presença de {s.name}</span>
                         <input
                           type="checkbox"
-                          className="h-4 w-4 accent-blue-600"
+                          className="h-5 w-5 accent-blue-600"
                           checked={!!presence[s.id]}
                           onChange={() => toggleStudent(s.id)}
                           aria-label={`Presença de ${s.name}`}
