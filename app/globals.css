@@ -1,33 +1,26 @@
-/* Tailwind v4 */
 @import "tailwindcss";
 
-/* Tema (Tailwind v4 usa @theme para tokens) */
 @theme {
   --color-brand-blue: #0A66FF;
   --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
-  --radius-xl: 0.75rem; /* 12px (rounded-xl) */
+  --radius-xl: 0.75rem;
 }
 
-/* Resets e utilitários globais */
 :root { color-scheme: light; }
 html, body { height: 100%; }
 
-/* Helpers usados no layout */
 .btn-primary {
   @apply px-6 py-3 font-semibold text-white disabled:opacity-50;
   background-color: var(--color-brand-blue);
   border-radius: var(--radius-xl);
 }
-
 .input {
   @apply w-full border border-gray-200 px-4 py-3 outline-none focus:ring-2;
   border-radius: var(--radius-xl);
-  /* ring no tom da brand */
   --tw-ring-color: color-mix(in oklab, var(--color-brand-blue) 40%, transparent);
 }
-
 .card {
   @apply bg-white border border-gray-100;
-  border-radius: calc(var(--radius-xl) * 1.333); /* ~rounded-2xl */
+  border-radius: calc(var(--radius-xl) * 1.333);
   box-shadow: var(--shadow-card);
 }

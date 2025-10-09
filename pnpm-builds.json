@@ -1,0 +1,9 @@
+{
+  "allowed": [
+    "@prisma/engines",
+    "@prisma/client",
+    "prisma",
+    "sharp",
+    "@tailwindcss/oxide"
+  ]
+}
