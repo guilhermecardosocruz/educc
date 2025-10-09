@@ -35,5 +35,13 @@
   },
   "engines": {
     "node": "^20"
+  },
+  "pnpm": {
+    "allowScripts": {
+      "@prisma/client": true,
+      "prisma": true,
+      "@tailwindcss/oxide": true,
+      "sharp": true
+    }
   }
 }
