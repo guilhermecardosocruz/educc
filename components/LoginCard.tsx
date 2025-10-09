@@ -48,7 +48,7 @@ export default function LoginCard() {
         <button type="submit" className="btn-primary w-full">Entrar</button>
 
         <div className="flex justify-between text-sm text-gray-600">
-          <a href="/(auth)/recover" className="underline">Esqueci a senha</a>
+          <a href="/recover-email" className="underline">Esqueci a senha</a>
           <a href="/register" className="underline">Criar conta</a>
         </div>
       </form>
