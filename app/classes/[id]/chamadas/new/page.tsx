@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
 
 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
 
@@ -16,9 +15,11 @@ export default function NewCallPage() {
   const [presence, setPresence] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
 
-  // Adicionar aluno (UI)
+  // Adicionar aluno
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newCpf, setNewCpf] = useState("");
+  const [newContact, setNewContact] = useState("");
   const [adding, setAdding] = useState(false);
 
   // Importação planilha
@@ -42,7 +43,6 @@ export default function NewCallPage() {
     })();
   }, [id]);
 
-  // Presenças
   function toggleStudent(studentId: string) {
     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
   }
@@ -52,27 +52,36 @@ export default function NewCallPage() {
     setPresence(all);
   }
 
-  // Adicionar aluno: só nome obrigatório
+  // Adicionar aluno: só nome obrigatório; cpf/contact opcionais
   async function handleAddStudent() {
     if (!id) return;
     const name = newName.trim();
+    const cpf = newCpf.trim();
+    const contact = newContact.trim();
     if (name.length < 2) {
       alert("Informe o nome (mínimo 2 caracteres).");
       return;
     }
     setAdding(true);
     try {
+      const body: any = { name };
+      if (cpf.length) body.cpf = cpf;
+      if (contact.length) body.contact = contact;
+
       const res = await fetch(`/api/classes/${id}/students`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name }) // apenas nome
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao adicionar");
+
       const st: Student = data.student;
       setStudents((prev) => [st, ...prev]);
       setPresence((p) => ({ ...p, [st.id]: true }));
-      setNewName("");
+
+      // limpa form
+      setNewName(""); setNewCpf(""); setNewContact("");
       setShowAdd(false);
     } catch (e) {
       alert("Erro ao adicionar aluno");
@@ -82,7 +91,7 @@ export default function NewCallPage() {
     }
   }
 
-  // Importação CSV/XLSX (opcional, mantida)
+  // Importação CSV/XLSX
   async function handleImportSend() {
     if (!id || !uploadFile) {
       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
@@ -95,6 +104,7 @@ export default function NewCallPage() {
       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+
       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
       const data2 = await res2.json();
       if (data2?.ok && Array.isArray(data2.students)) {
@@ -154,9 +164,7 @@ export default function NewCallPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
       <nav className="mb-4 text-sm">
-        <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">
-          Voltar para Chamadas
-        </Link>
+        <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">Voltar para Chamadas</Link>
       </nav>
 
       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
@@ -169,29 +177,26 @@ export default function NewCallPage() {
             <button
               type="button"
               onClick={() => setShowAdd((s) => !s)}
-              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-              title="Adicionar aluno"
+              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
             >
-              <Plus className="h-4 w-4" aria-hidden /> Adicionar aluno
+              Adicionar aluno
             </button>
             <button
               type="button"
               onClick={handleCreate}
-              disabled={adding || newName.trim().length < 2}
+              disabled={saving}
               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Criar chamada"}
             </button>
-            <Link
-              href={`/classes/${id}/chamadas`}
-              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700"
-            >
+            <Link href={`/classes/${id}/chamadas`} className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700">
               Cancelar
             </Link>
           </div>
         </div>
 
         <div className="space-y-5 px-5 py-5">
+          {/* Nome da aula */}
           <div className="grid gap-2">
             <label className="text-sm font-medium text-gray-800">Nome da aula</label>
             <input
@@ -202,12 +207,12 @@ export default function NewCallPage() {
             />
           </div>
 
-          {/* Form Adicionar aluno (só nome) */}
+          {/* Form Adicionar aluno - Nome obrigatório; CPF/Contato opcionais */}
           {showAdd && (
             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-end">
+              <div className="grid gap-3 md:grid-cols-3">
                 <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Nome do aluno</label>
+                  <label className="text-xs font-medium text-gray-700">Nome</label>
                   <input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
@@ -215,23 +220,41 @@ export default function NewCallPage() {
                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAddStudent}
-                    disabled={adding || newName.trim().length < 2}
-                    className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                  >
-                    {adding ? "Adicionando..." : "Salvar"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowAdd(false); setNewName(""); }}
-                    className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-                  >
-                    Cancelar
-                  </button>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+                  <input
+                    value={newCpf}
+                    onChange={(e) => setNewCpf(e.target.value)}
+                    placeholder="Somente números"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
                 </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+                  <input
+                    value={newContact}
+                    onChange={(e) => setNewContact(e.target.value)}
+                    placeholder="Ex.: (48) 99999-9999"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddStudent}
+                  disabled={adding || newName.trim().length < 2}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {adding ? "Adicionando..." : "Salvar aluno"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                >
+                  Cancelar
+                </button>
               </div>
             </div>
           )}
@@ -287,47 +310,6 @@ export default function NewCallPage() {
                   </div>
                 );
               })}
-            </div>
-          </div>
-
-          {/* Importação (mantida) */}
-          <div className="rounded-2xl border">
-            <div className="border-b px-4 py-3">
-              <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
-              <p className="text-xs text-gray-500 mt-1">CSV ou XLSX com colunas: <b>name</b> (obrigatório), <b>cpf</b>, <b>contact</b> (opcionais).</p>
-            </div>
-            <div className="grid gap-3 px-4 py-4">
-              <div
-                className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center cursor-pointer"
-                onClick={() => fileRef.current?.click()}
-              >
-                <p className="text-sm font-medium text-gray-800">Clique para selecionar ou arraste seu arquivo aqui</p>
-                <p className="text-xs text-gray-500">Formatos aceitos: CSV, XLSX</p>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] || null;
-                    setUploadName(f ? f.name : null);
-                    setUploadFile(f);
-                  }}
-                />
-                {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleImportSend}
-                    disabled={adding || newName.trim().length < 2}
-                    className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600 disabled:opacity-50"
-                  >
-                    {importing ? "Enviando..." : "Enviar planilha"}
-                  </button>
-                  <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">Baixar modelo CSV</a>
-                  <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">Baixar modelo XLSX</a>
-                </div>
-              </div>
             </div>
           </div>
         </div>{/* /px-5 py-5 */}
