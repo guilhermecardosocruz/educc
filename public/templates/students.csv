@@ -1,3 +1,5 @@
+# Atenção: SOMENTE a coluna "name" é obrigatória. "cpf" e "contact" são opcionais.
+# Remova estas linhas iniciadas com # se seu editor não as ignorar.
 name,cpf,contact
-Maria Silva,000.000.000-00,(11) 90000-0000
-João Souza,111.111.111-11,(21) 98888-7777
+Maria Silva,12345678901,(48) 99999-9999
+João Souza,,

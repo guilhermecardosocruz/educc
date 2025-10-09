@@ -320,6 +320,65 @@ export default function NewCallPage() {
               })}
             </div>
           </div>
+{/* Importação (CSV/XLSX) */}
+<div className="rounded-2xl border">
+  <div className="border-b px-4 py-3">
+    <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+    <p className="text-xs text-gray-600 mt-1">
+      <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+    </p>
+  </div>
+
+  <div className="grid gap-3 px-4 py-4">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+      <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+      <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        <input
+          type="file"
+          accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          id="students-file-input"
+          onChange={(e) => {
+            const f = e.target.files?.[0] || null;
+            setUploadName(f ? f.name : null);
+            setUploadFile(f);
+          }}
+        />
+        <label
+          htmlFor="students-file-input"
+          className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+        >
+          Escolher arquivo
+        </label>
+
+        <button
+          type="button"
+          onClick={handleImportSend}
+          disabled={!uploadFile || importing}
+          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+        >
+          {importing ? "Enviando..." : "Enviar planilha"}
+        </button>
+      </div>
+
+      {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+        <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+          Baixar modelo CSV
+        </a>
+        <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+          Baixar modelo XLSX
+        </a>
+        <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/README.txt" target="_blank" rel="noreferrer">
+          Ver instruções
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
         </div>{/* /px-5 py-5 */}
       </section>
     </main>
