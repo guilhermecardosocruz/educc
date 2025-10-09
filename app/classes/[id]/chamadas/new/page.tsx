@@ -182,25 +182,22 @@ export default function NewCallPage() {
             <p className="text-sm text-gray-600">Marque a presença e crie a chamada desta aula.</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAdd((s) => !s)}
-              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-            >
-              Adicionar aluno
-            </button>
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={saving}
-              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
-            >
-              {saving ? "Salvando..." : "Criar chamada"}
-            </button>
-            <Link href={`/classes/${id}/chamadas`} className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700">
-              Cancelar
-            </Link>
-          </div>
+  <button
+    type="button"
+    onClick={handleCreate}
+    disabled={saving}
+    className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+  >
+    {saving ? "Salvando..." : "Criar chamada"}
+  </button>
+  <button
+    type="button"
+    onClick={() => setShowAdd((s) => !s)}
+    className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+  >
+    Adicionar aluno
+  </button>
+</div>
         </div>
 
         <div className="space-y-5 px-5 py-5">
