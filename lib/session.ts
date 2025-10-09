@@ -3,22 +3,24 @@ import { prisma } from "@/lib/prisma";
 
 const COOKIE_NAME = "session_user_id";
 
-export function getSessionUserId() {
+/** Lê o userId do cookie (async em Next 15) */
+export async function getSessionUserId(): Promise<string | null> {
   try {
-    const c = cookies();
+    const c = await cookies();
     const id = c.get(COOKIE_NAME)?.value || null;
     return id;
   } catch {
-    // Em rotas de API (edge/route), usar from headers cookie
-    const h = headers();
+    // Fallback para contexts onde cookies() não está disponível
+    const h = await headers();
     const cookieHeader = h.get("cookie") || "";
     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
     return m ? m[1] : null;
   }
 }
 
+/** Busca o usuário logado; retorna null se não houver */
 export async function requireUser() {
-  const id = getSessionUserId();
+  const id = await getSessionUserId();
   if (!id) return null;
   const user = await prisma.user.findUnique({
     where: { id },
@@ -27,8 +29,10 @@ export async function requireUser() {
   return user;
 }
 
-export function clearSessionCookie() {
-  cookies().set({
+/** Apaga o cookie de sessão (async em Next 15) */
+export async function clearSessionCookie() {
+  const c = await cookies();
+  c.set({
     name: COOKIE_NAME,
     value: "",
     httpOnly: true,
