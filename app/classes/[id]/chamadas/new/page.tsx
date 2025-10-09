@@ -73,18 +73,26 @@ export default function NewCallPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao adicionar");
 
-      const st: Student = data.student;
+      let payload: any = null;
+      try { payload = await res.json(); } catch { /* ignore parse error */ }
+
+      if (!res.ok || !payload?.ok) {
+        let msg = "Erro ao adicionar aluno";
+        const e = payload?.error;
+        if (typeof e === "string") msg = e;
+        else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+        else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+        throw new Error(msg);
+      }
+
+      const st: Student = payload.student;
       setStudents((prev) => [st, ...prev]);
       setPresence((p) => ({ ...p, [st.id]: true }));
-
-      // limpa form
       setNewName(""); setNewCpf(""); setNewContact("");
       setShowAdd(false);
-    } catch (e) {
-      alert("Erro ao adicionar aluno");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao adicionar aluno");
       console.error(e);
     } finally {
       setAdding(false);
