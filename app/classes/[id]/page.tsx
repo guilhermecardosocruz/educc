@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import StudentsPanel from "./StudentsPanel";
 
 export default async function ClassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,9 +29,17 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
         </div>
       </section>
 
-      <div className="max-w-5xl mx-auto px-6">
-        <StudentsPanel classId={cls.id} />
-      </div>
+      {/* Corpo simplificado: sem StudentsPanel (edição/import de alunos saiu da Turma) */}
+      <section className="max-w-5xl mx-auto px-6 py-8">
+        <div className="card p-6">
+          <h2 className="text-lg font-semibold mb-2">Ações</h2>
+          <p className="text-gray-600 mb-4">Gerencie a turma acessando Chamadas e Conteúdos.</p>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/classes/${cls.id}/chamadas`} className="btn-primary">Ir para Chamadas</Link>
+            <Link href={`/classes/${cls.id}/conteudos`} className="rounded-xl border px-4 py-3">Ver Conteúdos</Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
