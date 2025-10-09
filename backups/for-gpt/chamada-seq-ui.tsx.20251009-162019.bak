@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type Student = { id: string; name: string; cpf: string | null; contact: string | null; };
+type Student = { id: string; name: string; cpf: string; contact: string };
 
 export default function ChamadaClient({
   classId,
@@ -89,7 +89,7 @@ export default function ChamadaClient({
   // double click para editar
   function onDblClickStudent(st: Student) {
     setEditId(st.id);
-    setEditForm({ name: st.name, contact: st.contact ?? "" });
+    setEditForm({ name: st.name, contact: st.contact });
     setMoreId(null);
   }
 
