@@ -1,0 +1,6 @@
+
+
+:root {
+  --color-brand-blue: #0A66FF;
+}
+.bg-brand-blue { background-color: var(--color-brand-blue); }
