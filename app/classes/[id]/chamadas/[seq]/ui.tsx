@@ -22,7 +22,7 @@ export default function ChamadaClient({
 
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", cpf: "", contact: "" });
+  const [addForm, setAddForm] = useState({ name: "" });
   const [adding, setAdding] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export default function ChamadaClient({
       } else {
         setStudents((prev) => [data.student, ...prev]);
         setShowAdd(false);
-        setAddForm({ name: "", cpf: "", contact: "" });
+        setAddForm({ name: "" });
       }
     } catch {
       alert("Falha de rede");
@@ -279,11 +279,11 @@ export default function ChamadaClient({
               </div>
               <div>
                 <label className="block text-sm mb-1">CPF</label>
-                <input className="input w-full" required value={addForm.cpf} onChange={e=>setAddForm(f=>({...f, cpf:e.target.value}))} placeholder="000.000.000-00" />
+                <input className="input w-full" required value={""} onChange={e=>setAddForm(f=>({...f, cpf:e.target.value}))} placeholder="000.000.000-00" />
               </div>
               <div>
                 <label className="block text-sm mb-1">Contato</label>
-                <input className="input w-full" required value={addForm.contact} onChange={e=>setAddForm(f=>({...f, contact:e.target.value}))} placeholder="(11) 90000-0000" />
+                <input className="input w-full" required value={""} onChange={e=>setAddForm(f=>({...f, contact:e.target.value}))} placeholder="(11) 90000-0000" />
               </div>
               <div className="sm:col-span-2 flex gap-2">
                 <button type="submit" disabled={adding} className="btn-primary">{adding ? "Salvando..." : "Salvar"}</button>
