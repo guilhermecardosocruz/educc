@@ -9,7 +9,6 @@ export default function ChamadasClient({ classId }: { classId: string }) {
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [order, setOrder] = useState<Order>("desc");
   const [error, setError] = useState<string | null>(null);
 
@@ -28,31 +27,6 @@ export default function ChamadasClient({ classId }: { classId: string }) {
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [order, classId]);
 
-  async function createOne() {
-    setCreating(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/classes/${classId}/chamadas`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({})
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) {
-        setError(data?.error ?? "Erro ao criar chamada");
-      } else {
-        const created: Item = data.attendance;
-        // navega direto para a nova chamada
-        router.push(`/classes/${classId}/chamadas/${created.seq}`);
-        return;
-      }
-    } catch {
-      setError("Falha de rede ao criar chamada");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   const sorted = useMemo(() => {
     return [...items].sort((a,b) => order === "asc" ? a.seq - b.seq : b.seq - a.seq);
   }, [items, order]);
@@ -61,11 +35,10 @@ export default function ChamadasClient({ classId }: { classId: string }) {
     <div className="mt-6">
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={createOne}
-          disabled={creating}
-          className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow transition disabled:opacity-60"
+          onClick={() => router.push(`/classes/${classId}/chamadas/new`)}
+          className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow transition"
         >
-          {creating ? "Criando..." : "➕ Nova chamada"}
+          ➕ Nova chamada
         </button>
 
         <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur">
