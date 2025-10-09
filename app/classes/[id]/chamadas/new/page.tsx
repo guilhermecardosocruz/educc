@@ -124,32 +124,3 @@ export default async function NewChamadaPage({ params }: { params: Promise<{ id:
     </main>
   );
 }
-
-/* client btns "Criar chamada / Cancelar" */
-function NewChamadaClient({ classId }: { classId: string }) {
-  return (
-    <div className="mt-4 flex items-center gap-3">
-      <button
-        className="btn-primary"
-        onClick={async () => {
-          const input = document.getElementById('title') as HTMLInputElement | null;
-          const title = input?.value?.trim() || undefined;
-          const res = await fetch(`/api/classes/${classId}/chamadas`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ title })
-          });
-          const data = await res.json();
-          if (!res.ok || !data?.ok) {
-            alert(data?.error ?? "Erro ao criar chamada");
-            return;
-          }
-          window.location.href = `/classes/${classId}/chamadas/${data.attendance.seq}`;
-        }}
-      >
-        Criar chamada
-      </button>
-      <a href={`/classes/${classId}/chamadas`} className="rounded-xl px-3 py-2 text-sm border">Cancelar</a>
-    </div>
-  );
-}
