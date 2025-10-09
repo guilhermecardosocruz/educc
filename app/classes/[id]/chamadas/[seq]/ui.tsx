@@ -22,7 +22,7 @@ export default function ChamadaClient({
 
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "" });
+  const [addForm, setAddForm] = useState({ name: "", cpf: "", contact: "" });
   const [adding, setAdding] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export default function ChamadaClient({
       } else {
         setStudents((prev) => [data.student, ...prev]);
         setShowAdd(false);
-        setAddForm({ name: "" });
+        setAddForm({ name: "", cpf: "", contact: "" });
       }
     } catch {
       alert("Falha de rede");
@@ -275,15 +275,15 @@ export default function ChamadaClient({
             <form onSubmit={onAddStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-sm mb-1">Nome</label>
-                <input className="input w-full" required value={addForm.name} onChange={e=>setAddForm(f=>({...f, name:e.target.value}))} />
+                <input className="input w-full" value={addForm.name} onChange={e=>setAddForm(f=>({...f, name:e.target.value}))} />
               </div>
               <div>
                 <label className="block text-sm mb-1">CPF</label>
-                <input className="input w-full" required value={""} onChange={e=>setAddForm(f=>({...f, cpf:e.target.value}))} placeholder="000.000.000-00" />
+                <input className="input w-full" value={""} onChange={e=>setAddForm(f=>({...f, cpf:e.target.value}))} placeholder="000.000.000-00" />
               </div>
               <div>
                 <label className="block text-sm mb-1">Contato</label>
-                <input className="input w-full" required value={""} onChange={e=>setAddForm(f=>({...f, contact:e.target.value}))} placeholder="(11) 90000-0000" />
+                <input className="input w-full" value={""} onChange={e=>setAddForm(f=>({...f, contact:e.target.value}))} placeholder="(11) 90000-0000" />
               </div>
               <div className="sm:col-span-2 flex gap-2">
                 <button type="submit" disabled={adding} className="btn-primary">{adding ? "Salvando..." : "Salvar"}</button>
