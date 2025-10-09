@@ -24,12 +24,30 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
             Voltar
           </Link>
         </div>
-        <div className="card p-6">
+
+        <div className="card p-6 mb-6">
           <p className="text-gray-600">
             Criada em {new Date(cls.createdAt).toLocaleString()}.
           </p>
-          <p className="mt-2 text-gray-700">
-            (Placeholder) Aqui você poderá gerenciar alunos, conteúdos, etc.
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href={`/classes/${cls.id}/chamadas`}
+              className="btn-primary inline-flex items-center justify-center"
+            >
+              Chamadas
+            </Link>
+            <Link
+              href={`/classes/${cls.id}/conteudos`}
+              className="btn-primary inline-flex items-center justify-center"
+            >
+              Conteúdos
+            </Link>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <p className="text-gray-700">
+            Selecione uma opção acima para gerenciar esta turma.
           </p>
         </div>
       </div>
