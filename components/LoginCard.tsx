@@ -49,7 +49,7 @@ export default function LoginCard() {
 
         <div className="flex justify-between text-sm text-gray-600">
           <a href="/(auth)/recover" className="underline">Esqueci a senha</a>
-          <a href="/(auth)/register" className="underline">Criar conta</a>
+          <a href="/register" className="underline">Criar conta</a>
         </div>
       </form>
     </div>
