@@ -18,6 +18,7 @@ model User {
   createdAt DateTime @default(now())
 
   resetTokens PasswordResetToken[]
+  classes     Class[]            @relation("UserClasses")
 }
 
 model PasswordResetToken {
@@ -27,5 +28,13 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 }
