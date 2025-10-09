@@ -1,10 +1,12 @@
 "use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type Student = { id: string; name: string; cpf: string | null; contact: string | null; };
+type Student = { id: string; name: string; cpf: string | null; contact: string | null };
 
-export default function ChamadaClient({
+export default function EditChamadaClient({
   classId,
   className,
   seq,
@@ -17,281 +19,411 @@ export default function ChamadaClient({
   initialTitle: string;
   initialStudents: Student[];
 }) {
-  const [title, setTitle] = useState(initialTitle);
-  const [savingTitle, setSavingTitle] = useState(false);
+  const router = useRouter();
 
-  const [students, setStudents] = useState<Student[]>(initialStudents);
+  // título
+  const [title, setTitle] = useState(initialTitle || "");
+  // alunos
+  const [students, setStudents] = useState<Student[]>(initialStudents || []);
+  // presenças
+  const [presence, setPresence] = useState<Record<string, boolean>>({});
+  // flags
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Adicionar aluno
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", cpf: "", contact: "" });
+  const [newName, setNewName] = useState("");
+  const [newCpf, setNewCpf] = useState("");
+  const [newContact, setNewContact] = useState("");
   const [adding, setAdding] = useState(false);
 
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", contact: "" });
-  const [editing, setEditing] = useState(false);
-  const [moreId, setMoreId] = useState<string | null>(null);
-
-  const fileRef = useRef<HTMLInputElement|null>(null);
+  // Import planilha
+  const [uploadName, setUploadName] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // salvar título
-  async function saveTitle() {
-    setSavingTitle(true);
+  // Carregar presenças atuais (se existirem)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const map: Record<string, boolean> = {};
+        if (Array.isArray(data?.rows)) {
+          for (const r of data.rows) map[r.studentId] = !!r.present;
+        } else {
+          // fallback: marca todos como presentes por padrão
+          for (const s of initialStudents) map[s.id] = true;
+        }
+        setPresence(map);
+      } catch {
+        // fallback: marca todos presentes
+        const map: Record<string, boolean> = {};
+        for (const s of initialStudents) map[s.id] = true;
+        setPresence(map);
+      }
+    })();
+  }, [classId, seq, initialStudents]);
+
+  function toggleStudent(studentId: string) {
+    setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+  }
+  function setAll(v: boolean) {
+    const all: Record<string, boolean> = {};
+    for (const s of students) all[s.id] = v;
+    setPresence(all);
+  }
+
+  // Salvar título e presenças
+  async function handleSave() {
+    setSaving(true);
     try {
-      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
-        method: "PATCH",
+      // (opcional) salvar título, se houver endpoint (mantenho compat c/ seu POST de criação)
+      // Aqui apenas salvamos presenças:
+      const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, {
+        method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title })
+        body: JSON.stringify({ presences })
       });
-      if (!res.ok) throw new Error("Erro ao salvar título");
-    } catch (e:any) {
-      alert(e.message || "Erro ao salvar título");
+      const d = await res.json();
+      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao salvar presenças");
+      alert("Chamada atualizada com sucesso.");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar chamada");
+      console.error(e);
     } finally {
-      setSavingTitle(false);
+      setSaving(false);
     }
   }
 
-  // abrir conteúdo em nova aba
-  function openContent() {
-    window.open(`/classes/${classId}/conteudos/${seq}`, "_blank", "noopener,noreferrer");
+  // Excluir chamada
+  async function handleDelete() {
+    if (!confirm("Tem certeza que deseja excluir esta chamada? Esta ação não pode ser desfeita.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao excluir chamada");
+      router.push(`/classes/${classId}/chamadas`);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao excluir chamada");
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
   }
 
-  // abrir todos os conteúdos
-  function openAllContents() {
-    window.location.href = `/classes/${classId}/conteudos`;
-  }
-
-  // adicionar aluno
-  async function onAddStudent(e: React.FormEvent) {
-    e.preventDefault();
+  // Adicionar aluno: só nome obrigatório; cpf/contact opcionais
+  async function handleAddStudent() {
+    const name = newName.trim();
+    const cpf = newCpf.trim();
+    const contact = newContact.trim();
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
+      return;
+    }
     setAdding(true);
     try {
+      const body: any = { name };
+      if (cpf.length) body.cpf = cpf;
+      if (contact.length) body.contact = contact;
+
       const res = await fetch(`/api/classes/${classId}/students`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(addForm)
+        body: JSON.stringify(body)
       });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) {
-        alert(data?.error || "Erro ao adicionar aluno");
-      } else {
-        setStudents((prev) => [data.student, ...prev]);
-        setShowAdd(false);
-        setAddForm({ name: "", cpf: "", contact: "" });
+      let payload: any = null;
+      try { payload = await res.json(); } catch {}
+      if (!res.ok || !payload?.ok) {
+        let msg = "Erro ao adicionar aluno";
+        const e = payload?.error;
+        if (typeof e === "string") msg = e;
+        else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+        else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+        throw new Error(msg);
       }
-    } catch {
-      alert("Falha de rede");
+
+      const st: Student = payload.student;
+      setStudents((prev) => [st, ...prev]);
+      setPresence((p) => ({ ...p, [st.id]: true }));
+      setNewName(""); setNewCpf(""); setNewContact("");
+      setShowAdd(false);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao adicionar aluno");
+      console.error(e);
     } finally {
       setAdding(false);
     }
   }
 
-  // double click para editar
-  function onDblClickStudent(st: Student) {
-    setEditId(st.id);
-    setEditForm({ name: st.name, contact: st.contact ?? "" });
-    setMoreId(null);
-  }
-
-  // salvar edição
-  async function onSaveEdit() {
-    if (!editId) return;
-    setEditing(true);
-    try {
-      const res = await fetch(`/api/classes/${classId}/students/${editId}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(editForm)
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) {
-        alert(data?.error || "Erro ao salvar aluno");
-      } else {
-        setStudents((prev) => prev.map(s => s.id === editId ? data.student : s));
-        setEditId(null);
-      }
-    } catch {
-      alert("Falha de rede");
-    } finally {
-      setEditing(false);
+  // Importação CSV/XLSX
+  async function handleImportSend() {
+    if (!classId || !uploadFile) {
+      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+      return;
     }
-  }
-
-  // excluir
-  async function onDelete() {
-    if (!editId) return;
-    if (!confirm("Remover este aluno?")) return;
-    try {
-      const res = await fetch(`/api/classes/${classId}/students/${editId}`, { method: "DELETE" });
-      const ok = res.ok;
-      if (!ok) alert("Erro ao excluir");
-      else setStudents(prev => prev.filter(s => s.id !== editId));
-      setEditId(null);
-    } catch {
-      alert("Falha de rede");
-    }
-  }
-
-  // importar
-  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
     setImporting(true);
-    setImportMsg(null);
     try {
       const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/classes/${classId}/students/import`, { method:"POST", body: fd });
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
       const data = await res.json();
-      if (!res.ok || !data?.ok) {
-        setImportMsg(data?.error || "Falha ao importar");
-      } else {
-        setStudents(prev => [...data.students, ...prev]);
-        setImportMsg(`Importados: ${data.createdCount}`);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+
+      // Recarrega alunos
+      const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+      const data2 = await res2.json();
+      if (data2?.ok && Array.isArray(data2.students)) {
+        setStudents(data2.students);
+        const next: Record<string, boolean> = {};
+        for (const s of data2.students) next[s.id] = true;
+        setPresence(next);
       }
-    } catch {
-      setImportMsg("Falha de rede");
+      setUploadName(null); setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      alert("Erro ao importar planilha");
+      console.error(e);
     } finally {
       setImporting(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
-  return (
-    <main className="min-h-screen">
-      {/* HERO */}
-      <section className="bg-gradient-to-br from-[var(--color-brand-blue)]/90 to-[var(--color-brand-blue)] text-white">
-        <div className="max-w-5xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs/5 uppercase tracking-widest text-white/80">EDUCC</p>
-              <h1 className="mt-1 text-2xl sm:text-3xl font-bold">
-                {className} • Chamada #{seq}
-              </h1>
-            </div>
-            <div className="flex gap-2">
-              <Link href={`/classes/${classId}`} className="rounded-xl bg-white/10 px-4 py-2 text-sm backdrop-blur hover:bg-white/15">← Turma</Link>
-              <button onClick={openAllContents} className="rounded-xl bg-white/10 px-4 py-2 text-sm backdrop-blur hover:bg-white/15">Todos os conteúdos</button>
-              <button onClick={openContent} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow">Conteúdo</button>
-            </div>
-          </div>
+  const totalPresentes = useMemo(
+    () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+    [students, presence]
+  );
 
-          <div className="mt-5 grid gap-4">
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <label className="block text-sm text-white/90 mb-1">Título da aula</label>
-              <div className="flex gap-2">
-                <input
-                  className="w-full rounded-xl px-4 py-2 bg-white text-[var(--color-brand-blue)] placeholder-gray-400"
-                  value={title}
-                  onChange={e=>setTitle(e.target.value)}
-                  onBlur={saveTitle}
-                  placeholder="Título da aula"
-                />
-                <button onClick={saveTitle} disabled={savingTitle} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow disabled:opacity-60">
-                  {savingTitle ? "Salvando..." : "Salvar"}
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-6">
+      <nav className="mb-4 text-sm">
+        <Link href={`/classes/${classId}/chamadas`} className="text-blue-700 hover:underline">
+          Voltar para Chamadas
+        </Link>
+      </nav>
+
+      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+        {/* Cabeçalho: título & aula */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">
+              Editar chamada <span className="text-gray-500">#{seq}</span> — {className}
+            </h1>
+            <p className="text-sm text-gray-600">Atualize presenças, cadastre alunos e gerencie esta chamada.</p>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Nome da aula</div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ex.: Aula 01 - Revisão"
+              className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-5 px-5 py-5">
+          {/* Adicionar aluno - Nome obrigatório; CPF/Contato opcionais */}
+          {showAdd && (
+            <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Nome</label>
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ex.: Maria Silva"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+                  <input
+                    value={newCpf}
+                    onChange={(e) => setNewCpf(e.target.value)}
+                    placeholder="Somente números"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+                  <input
+                    value={newContact}
+                    onChange={(e) => setNewContact(e.target.value)}
+                    placeholder="Ex.: (48) 99999-9999"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddStudent}
+                  disabled={adding || newName.trim().length < 2}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {adding ? "Adicionando..." : "Salvar aluno"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                >
+                  Cancelar
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          )}
 
-      {/* BODY */}
-      <section className="max-w-5xl mx-auto px-6 py-8 grid gap-6">
-        {/* Alunos header + adicionar */}
-        <div className="card p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Alunos</h2>
-            <div className="flex gap-2">
-              <button onClick={()=>setShowAdd(true)} className="btn-primary">Adicionar aluno</button>
-              <a href="/templates/students.csv" target="_blank" className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Modelo CSV</a>
-              <a href="/templates/students.xlsx" target="_blank" className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Modelo XLSX</a>
-              <label className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
-                {importing ? "Importando..." : "Importar CSV/XLSX"}
-                <input ref={fileRef} onChange={onImportFile} type="file" accept=".csv,.xlsx" className="hidden" />
-              </label>
+          {/* Lista de presença */}
+          <div className="rounded-2xl overflow-hidden border">
+            <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+              <div className="font-semibold">Lista de presença</div>
+              <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+            </div>
+
+            <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+              <div className="px-1.5 py-2 text-center">#</div>
+              <div className="px-3 py-2">Aluno</div>
+              <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto">
+              {students.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+              ) : students.map((s, idx) => {
+                const isEven = idx % 2 === 0;
+                return (
+                  <div
+                    key={s.id}
+                    className={[
+                      "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+                      "border-b border-blue-100",
+                      isEven ? "bg-blue-50/40" : "bg-white"
+                    ].join(" ")}
+                  >
+                    <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+                    <div className="px-3 py-2">
+                      <div className="font-medium text-gray-900">{s.name}</div>
+                    </div>
+                    <div className="px-1.5 py-2 text-center">
+                      <label className="inline-flex items-center">
+                        <span className="sr-only">Marcar presença de {s.name}</span>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-blue-600"
+                          checked={!!presence[s.id]}
+                          onChange={() => toggleStudent(s.id)}
+                          aria-label={`Presença de ${s.name}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          {importMsg && <p className="text-sm mt-2 text-gray-600">{importMsg}</p>}
 
-          {/* Lista com “gradiente” por item */}
-          <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {students.map((s) => {
-              const isEditing = editId === s.id;
-              const gradient = "bg-gradient-to-br from-[var(--color-brand-blue)]/10 to-[var(--color-brand-blue)]/5";
-              return (
-                <li key={s.id}>
-                  <div
-                    onDoubleClick={()=>onDblClickStudent(s)}
-                    className={`rounded-xl p-4 border border-gray-200 hover:shadow transition ${gradient}`}
-                  >
-                    {!isEditing ? (
-                      <>
-                        <div className="font-semibold">{s.name}</div>
-                        <div className="text-xs text-gray-600 mt-1">Dê dois cliques para editar</div>
-                        <div className="mt-2">
-                          <button
-                            onClick={()=> setMoreId(moreId === s.id ? null : s.id)}
-                            className="text-[var(--color-brand-blue)] text-sm hover:underline"
-                          >
-                            Mais informações
-                          </button>
-                          {moreId === s.id && (
-                            <div className="text-sm text-gray-700 mt-2 space-y-1">
-                              <div><b>CPF:</b> {s.cpf}</div>
-                              <div><b>Contato:</b> {s.contact}</div>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="space-y-2">
-                        <div>
-                          <label className="block text-xs text-gray-600">Nome</label>
-                          <input className="input w-full" value={editForm.name} onChange={e=>setEditForm(f=>({...f, name:e.target.value}))} />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-600">Contato</label>
-                          <input className="input w-full" value={editForm.contact} onChange={e=>setEditForm(f=>({...f, contact:e.target.value}))} />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={onSaveEdit} disabled={editing} className="btn-primary">{editing ? "Salvando..." : "Salvar"}</button>
-                          <button onClick={()=>setEditId(null)} className="rounded-xl px-3 py-2 text-sm border">Cancelar</button>
-                          <button onClick={onDelete} className="rounded-xl px-3 py-2 text-sm border text-red-600">Excluir</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+          {/* Barra de ações — abaixo da lista */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar alterações"}
+            </button>
 
-        {/* Modal inline de adicionar aluno */}
-        {showAdd && (
-          <div className="card p-6">
-            <h3 className="font-semibold mb-3">Adicionar aluno</h3>
-            <form onSubmit={onAddStudent} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-sm mb-1">Nome</label>
-                <input className="input w-full" value={addForm.name} onChange={e=>setAddForm(f=>({...f, name:e.target.value}))} />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">CPF</label>
-                <input className="input w-full" value={""} onChange={e=>setAddForm(f=>({...f, cpf:e.target.value}))} placeholder="000.000.000-00" />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">Contato</label>
-                <input className="input w-full" value={""} onChange={e=>setAddForm(f=>({...f, contact:e.target.value}))} placeholder="(11) 90000-0000" />
-              </div>
-              <div className="sm:col-span-2 flex gap-2">
-                <button type="submit" disabled={adding} className="btn-primary">{adding ? "Salvando..." : "Salvar"}</button>
-                <button type="button" onClick={()=>setShowAdd(false)} className="rounded-xl px-3 py-2 text-sm border">Cancelar</button>
-              </div>
-            </form>
+            <button
+              type="button"
+              onClick={() => setShowAdd((s) => !s)}
+              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+            >
+              Adicionar aluno
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+            >
+              {deleting ? "Excluindo..." : "Excluir chamada"}
+            </button>
           </div>
-        )}
+
+          {/* Importação (CSV/XLSX) — igual à Nova Chamada */}
+          <div className="rounded-2xl border">
+            <div className="border-b px-4 py-3">
+              <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+              <p className="text-xs text-gray-600 mt-1">
+                <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+              </p>
+            </div>
+
+            <div className="grid gap-3 px-4 py-4">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+                <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+                <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <input
+                    type="file"
+                    accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    id="students-file-input"
+                    ref={fileRef}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setUploadName(f ? f.name : null);
+                      setUploadFile(f);
+                    }}
+                  />
+                  <label
+                    htmlFor="students-file-input"
+                    className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+                  >
+                    Escolher arquivo
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleImportSend}
+                    disabled={!uploadFile || importing}
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {importing ? "Enviando..." : "Enviar planilha"}
+                  </button>
+                </div>
+
+                {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+                    Baixar modelo CSV
+                  </a>
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+                    Baixar modelo XLSX
+                  </a>
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/README.txt" target="_blank" rel="noreferrer">
+                    Ver instruções
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>{/* /px-5 py-5 */}
       </section>
     </main>
   );
