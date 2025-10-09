@@ -17,7 +17,7 @@ model User {
   phone     String
   createdAt DateTime @default(now())
 
-  passwordHash String?   // <--- NOVO: hash (opcional p/ compatibilidade)
+  passwordHash String?
 
   resetTokens PasswordResetToken[]
   classes     Class[]            @relation("UserClasses")
@@ -39,4 +39,17 @@ model Class {
   ownerId   String
   owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  attendances Attendance[]
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  classId   String
+  cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  seq       Int      // ID incremental por turma (começa em 1)
+  title     String   @default("Chamada")
+  createdAt DateTime @default(now())
+
+  @@unique([classId, seq])
 }
