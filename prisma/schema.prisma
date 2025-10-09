@@ -9,14 +9,13 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  cpf       String   @unique
-  birthDate DateTime
-  email     String   @unique
-  phone     String
-  createdAt DateTime @default(now())
-
+  id           String   @id @default(cuid())
+  name         String
+  cpf          String   @unique
+  birthDate    DateTime
+  email        String   @unique
+  phone        String
+  createdAt    DateTime @default(now())
   passwordHash String?
 
   resetTokens PasswordResetToken[]
@@ -34,22 +33,46 @@ model PasswordResetToken {
 }
 
 model Class {
-  id        String   @id @default(cuid())
-  name      String
-  ownerId   String
-  owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id          String       @id @default(cuid())
+  name        String
+  ownerId     String
+  owner       User         @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
 
   attendances Attendance[]
+  contents    Content[]
+  students    Student[]
 }
 
 model Attendance {
   id        String   @id @default(cuid())
   classId   String
   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
-  seq       Int      // ID incremental por turma (começa em 1)
+  seq       Int
   title     String   @default("Chamada")
   createdAt DateTime @default(now())
 
   @@unique([classId, seq])
+}
+
+model Content {
+  id        String   @id @default(cuid())
+  classId   String
+  cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  seq       Int
+  title     String   @default("Conteúdo")
+  bodyHtml  String?  // futuro: editor; por enquanto pode ficar vazio
+  createdAt DateTime @default(now())
+
+  @@unique([classId, seq])
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  classId   String
+  cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  name      String
+  cpf       String
+  contact   String   // whatsapp/email/telefone
+  createdAt DateTime @default(now())
 }

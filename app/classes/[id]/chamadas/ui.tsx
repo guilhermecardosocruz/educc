@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Item = { id: string; seq: number; title: string; createdAt: string };
 type Order = "asc" | "desc";
 
 export default function ChamadasClient({ classId }: { classId: string }) {
+  const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -39,9 +41,10 @@ export default function ChamadasClient({ classId }: { classId: string }) {
       if (!res.ok || !data?.ok) {
         setError(data?.error ?? "Erro ao criar chamada");
       } else {
-        // inserir no estado conforme a ordenação atual
         const created: Item = data.attendance;
-        setItems((prev) => order === "desc" ? [created, ...prev] : [...prev, created]);
+        // navega direto para a nova chamada
+        router.push(`/classes/${classId}/chamadas/${created.seq}`);
+        return;
       }
     } catch {
       setError("Falha de rede ao criar chamada");
@@ -51,7 +54,6 @@ export default function ChamadasClient({ classId }: { classId: string }) {
   }
 
   const sorted = useMemo(() => {
-    // já vem ordenado pela API; isto é redundante, mas mantém robustez
     return [...items].sort((a,b) => order === "asc" ? a.seq - b.seq : b.seq - a.seq);
   }, [items, order]);
 
@@ -98,8 +100,7 @@ export default function ChamadasClient({ classId }: { classId: string }) {
               <li key={it.id}>
                 <button
                   className="w-full text-left rounded-xl bg-white px-4 py-3 shadow-sm hover:shadow transition border border-white/70"
-                  // futuro: onClick -> navegar para detalhe da chamada
-                  onClick={() => {}}
+                  onClick={() => router.push(`/classes/${classId}/chamadas/${it.seq}`)}
                 >
                   <div className="text-sm text-[var(--color-brand-blue)] font-semibold">ID #{it.seq}</div>
                   <div className="font-medium">{it.title}</div>
