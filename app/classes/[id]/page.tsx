@@ -3,12 +3,14 @@ import { requireUser } from "@/lib/session";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-export default async function ClassPage({ params }: { params: { id: string } }) {
+export default async function ClassPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
   const user = await requireUser();
   if (!user) redirect("/login");
 
   const cls = await prisma.class.findFirst({
-    where: { id: params.id, ownerId: user.id },
+    where: { id, ownerId: user.id },
     select: { id: true, name: true, createdAt: true }
   });
   if (!cls) notFound();
