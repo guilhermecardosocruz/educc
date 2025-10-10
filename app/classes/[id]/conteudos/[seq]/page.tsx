@@ -8,6 +8,55 @@ type Content = {
   objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string;
 };
 
+// Componente de campo editável com overlay que captura double-click
+function EditableField({
+  label, value, setValue, multiline = false, editing, setEditing, placeholder
+}: {
+  label: string;
+  value: string;
+  setValue: (v: string) => void;
+  multiline?: boolean;
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative">
+      <label className="mb-1 block text-sm text-gray-600">{label}</label>
+      {multiline ? (
+        <textarea
+          className={`input min-h-[96px] ${editing ? "" : "opacity-70"}`}
+          value={value}
+          onChange={(e)=> setValue(e.target.value)}
+          disabled={!editing}
+          placeholder={placeholder}
+        />
+      ) : (
+        <input
+          className={`input ${editing ? "" : "opacity-70"}`}
+          value={value}
+          onChange={(e)=> setValue(e.target.value)}
+          disabled={!editing}
+          placeholder={placeholder}
+        />
+      )}
+      {/* Overlay: quando não está editando, captura o double-click */}
+      {!editing && (
+        <button
+          type="button"
+          aria-label={`Editar ${label}`}
+          title="Dê dois cliques para editar"
+          onDoubleClick={()=> setEditing(true)}
+          className="absolute inset-0 cursor-text"
+          // botão invisível
+          style={{ background: "transparent" }}
+        />
+      )}
+      {!editing && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
+    </div>
+  );
+}
+
 export default function ConteudoDetailPage() {
   const { id, seq } = useParams<{ id: string; seq: string }>();
   const router = useRouter();
@@ -16,12 +65,12 @@ export default function ConteudoDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // flags de edição por campo: começa só leitura; habilita com duplo clique
+  // flags de edição (double-click liga)
   const [edit, setEdit] = useState<{title:boolean; objetivos:boolean; desenvolvimento:boolean; recursos:boolean; bncc:boolean}>({
     title: false, objetivos: false, desenvolvimento: false, recursos: false, bncc: false
   });
 
-  // valores editáveis
+  // valores
   const [title, setTitle] = useState("");
   const [objetivos, setObjetivos] = useState("");
   const [desenvolvimento, setDesenvolvimento] = useState("");
@@ -62,7 +111,6 @@ export default function ConteudoDetailPage() {
       const j = await res.json().catch(()=> ({}));
       if (!res.ok || !j?.ok) throw new Error(j?.error || "Falha ao salvar");
       loadLocal(j.content);
-      // volta todos para read-only após salvar
       setEdit({ title:false, objetivos:false, desenvolvimento:false, recursos:false, bncc:false });
       alert("Conteúdo atualizado.");
     } catch(e:any) {
@@ -79,7 +127,6 @@ export default function ConteudoDetailPage() {
       const res = await fetch(`/api/classes/${id}/conteudos/${seq}`, { method: "DELETE" });
       const j = await res.json().catch(()=> ({}));
       if (!res.ok || !j?.ok) throw new Error(j?.error || "Falha ao excluir");
-      // volta para a lista
       router.push(`/classes/${id}/conteudos`);
     } catch(e:any) {
       alert(e?.message || "Erro ao excluir");
@@ -102,84 +149,62 @@ export default function ConteudoDetailPage() {
       ) : !data ? (
         <p className="text-sm text-gray-600">Carregando…</p>
       ) : (
-        <section className="rounded-2xl border bg-white p-6 space-y-4">
-          {/* Título (nome da aula) */}
-          <div onDoubleClick={()=> setEdit(s => ({...s, title:true}))}>
-            <label className="mb-1 block text-sm text-gray-600">Nome da aula</label>
-            <input
-              className="input disabled:opacity-70"
-              value={title}
-              onChange={(e)=> setTitle(e.target.value)}
-              disabled={!edit.title}
-              placeholder="Ex.: Algoritmos — Aula 1"
-            />
-            {!edit.title && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
-          </div>
+        <section className="space-y-4 rounded-2xl border bg-white p-6">
+          <EditableField
+            label="Nome da aula"
+            value={title}
+            setValue={setTitle}
+            editing={edit.title}
+            setEditing={(v)=> setEdit(s=> ({...s, title:v}))}
+            placeholder="Ex.: Algoritmos — Aula 1"
+          />
+          <EditableField
+            label="Objetivos"
+            value={objetivos}
+            setValue={setObjetivos}
+            editing={edit.objetivos}
+            setEditing={(v)=> setEdit(s=> ({...s, objetivos:v}))}
+            multiline
+          />
+          <EditableField
+            label="Desenvolvimento das atividades"
+            value={desenvolvimento}
+            setValue={setDesenvolvimento}
+            editing={edit.desenvolvimento}
+            setEditing={(v)=> setEdit(s=> ({...s, desenvolvimento:v}))}
+            multiline
+          />
+          <EditableField
+            label="Recursos pedagógicos"
+            value={recursos}
+            setValue={setRecursos}
+            editing={edit.recursos}
+            setEditing={(v)=> setEdit(s=> ({...s, recursos:v}))}
+            multiline
+          />
+          <EditableField
+            label="BNCC"
+            value={bncc}
+            setValue={setBncc}
+            editing={edit.bncc}
+            setEditing={(v)=> setEdit(s=> ({...s, bncc:v}))}
+            placeholder="Ex.: EF06MA01"
+          />
 
-          {/* Objetivos */}
-          <div onDoubleClick={()=> setEdit(s => ({...s, objetivos:true}))}>
-            <label className="mb-1 block text-sm text-gray-600">Objetivos</label>
-            <textarea
-              className="input min-h-[80px] disabled:opacity-70"
-              value={objetivos}
-              onChange={(e)=> setObjetivos(e.target.value)}
-              disabled={!edit.objetivos}
-            />
-            {!edit.objetivos && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
-          </div>
-
-          {/* Desenvolvimento das atividades */}
-          <div onDoubleClick={()=> setEdit(s => ({...s, desenvolvimento:true}))}>
-            <label className="mb-1 block text-sm text-gray-600">Desenvolvimento das atividades</label>
-            <textarea
-              className="input min-h-[100px] disabled:opacity-70"
-              value={desenvolvimento}
-              onChange={(e)=> setDesenvolvimento(e.target.value)}
-              disabled={!edit.desenvolvimento}
-            />
-            {!edit.desenvolvimento && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
-          </div>
-
-          {/* Recursos pedagógicos */}
-          <div onDoubleClick={()=> setEdit(s => ({...s, recursos:true}))}>
-            <label className="mb-1 block text-sm text-gray-600">Recursos pedagógicos</label>
-            <textarea
-              className="input min-h-[80px] disabled:opacity-70"
-              value={recursos}
-              onChange={(e)=> setRecursos(e.target.value)}
-              disabled={!edit.recursos}
-            />
-            {!edit.recursos && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
-          </div>
-
-          {/* BNCC */}
-          <div onDoubleClick={()=> setEdit(s => ({...s, bncc:true}))}>
-            <label className="mb-1 block text-sm text-gray-600">BNCC</label>
-            <input
-              className="input disabled:opacity-70"
-              value={bncc}
-              onChange={(e)=> setBncc(e.target.value)}
-              disabled={!edit.bncc}
-              placeholder="Ex.: EF06MA01"
-            />
-            {!edit.bncc && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
-          </div>
-
-          {/* Ações */}
           <div className="flex items-center justify-between pt-2">
             <button
               onClick={onDelete}
               disabled={deleting}
-              className="rounded-xl border border-red-600 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-60"
+              className="rounded-xl border px-4 py-2 text-red-600 border-red-600 hover:bg-red-50 disabled:opacity-60"
             >
-              {deleting ? "Excluindo..." : "Excluir conteúdo"}
+              Excluir
             </button>
             <button
               onClick={onSave}
               disabled={saving}
               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white disabled:opacity-60"
             >
-              {saving ? "Salvando..." : "Salvar alterações"}
+              Salvar
             </button>
           </div>
         </section>
