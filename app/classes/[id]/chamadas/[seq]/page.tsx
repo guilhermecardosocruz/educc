@@ -28,5 +28,12 @@ export default async function ChamadaPage({ params }: { params: Promise<{ id: st
     select: { id: true, name: true, cpf: true, contact: true }
   });
 
-  return <ChamadaClient classId={cls.id} className={cls.name} seq={attendance.seq} initialTitle={attendance.title} initialStudents={students} />;
+
+  // carrega presenças salvas para esta chamada
+  const presences = await prisma.attendancePresence.findMany({
+    where: { classId: cls.id, seq: attendance.seq },
+    select: { studentId: true, present: true }
+  });
+  const initialPresence = Object.fromEntries(presences.map(r => [r.studentId, !!r.present]));
+  return <ChamadaClient classId={cls.id} className={cls.name} seq={attendance.seq} initialTitle={attendance.title} initialStudents={students} initialPresence={initialPresence}  />;
 }

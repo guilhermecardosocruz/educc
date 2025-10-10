@@ -17,8 +17,7 @@ export default function EditChamadaClient({
   className: string;
   seq: number;
   initialTitle: string;
-  initialStudents: Student[];
-}) {
+  initialStudents: Student[]; initialPresence?: Record<string, boolean>; }) {
   const router = useRouter();
 
   const [title, setTitle] = useState(initialTitle || "");
