@@ -1,61 +1,95 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { notFound } from "next/navigation";
 
-type Params = { id: string };
+export const dynamic = "force-dynamic";
 
-export default async function ChamadasPage({ params }: { params: Promise<Params> }) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-
-  // Confere se a turma existe
-  const cls = await prisma.class.findUnique({
+  const cls = await prisma.class.findFirst({
     where: { id },
     select: { id: true, name: true }
   });
-  if (!cls) return notFound();
+  if (!cls) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <div className="rounded-2xl border bg-white p-8 text-center">
+          <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
+          <Link href="/classes" className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
+            Voltar
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
-  // Lista chamadas (ordem desc por seq)
-  const chamadas = await prisma.attendance.findMany({
-    where: { classId: id },
-    orderBy: { seq: "desc" },
-    select: { seq: true, title: true, createdAt: true }
+  const attendances = await prisma.attendance.findMany({
+    where: { classId: cls.id },
+    orderBy: [{ seq: "desc" }],
+    select: { seq: true, title: true }
   });
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-6">
-      <nav className="mb-4 text-sm">
-        <Link href={`/classes/${id}`} className="group block rounded-lg px-4 py-3 odd:bg-blue-50 even:bg-blue-100 hover:bg-blue-200/70 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">Voltar para Turma</Link>
-      </nav>
-
-      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5 bg-white">
-        <div className="flex items-center justify-between border-b px-5 py-4">
+    <main className="mx-auto max-w-5xl px-6 py-10">
+      {/* Cabeçalho */}
+      <div className="rounded-2xl border bg-white/90 backdrop-blur p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Chamadas — {cls.name}</h1>
-            <p className="text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
+            <h1 className="text-xl font-semibold text-gray-900">
+              Chamadas — <span className="text-[#0A66FF]">{cls.name}</span>
+            </h1>
+            <p className="mt-1 text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
           </div>
-          <Link href={`/classes/${id}/chamadas/new`} className="group block rounded-lg px-4 py-3 odd:bg-blue-50 even:bg-blue-100 hover:bg-blue-200/70 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+
+          <Link
+            href={`/classes/${cls.id}/chamadas/new`}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="-ms-1">
+              <path fill="currentColor" d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2z"/>
+            </svg>
             Nova chamada
           </Link>
         </div>
+      </div>
 
-        <div className="px-5 py-5">
-          {chamadas.length === 0 ? (
-            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 text-sm text-gray-700 bg-white">
-              Nenhuma chamada criada ainda. Clique em <b>Nova chamada</b> para começar.
+      {/* Lista */}
+      <section className="mt-6">
+        <div className="rounded-2xl border bg-white shadow-sm">
+          {attendances.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-gray-700">Ainda não há chamadas nesta turma.</p>
+              <Link
+                href={`/classes/${cls.id}/chamadas/new`}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0A66FF] px-4 py-2 text-sm font-medium text-[#0A66FF] hover:bg-[#0A66FF] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+              >
+                Criar primeira chamada
+              </Link>
             </div>
           ) : (
-            <ul className="divide-y rounded-2xl border divide-blue-200 bg-white divide-blue-200">
-              {chamadas.map((c) => (
-                <li key={c.seq} className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      {c.title?.length ? c.title : `Chamada #${c.seq}`}
+            <ul className="divide-y divide-blue-100">
+              {attendances.map((att, idx) => (
+                <li key={att.seq} className="odd:bg-blue-50/40 even:bg-blue-100/30">
+                  <Link
+                    href={`/classes/${cls.id}/chamadas/${att.seq}`}
+                    className="group block px-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+                    title={att.title || `Chamada #${att.seq}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-[15px] font-semibold text-gray-900">
+                          {att.title?.trim() ? att.title : `Chamada #${att.seq}`}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-600">
+                          Sequência: <span className="font-medium text-gray-800">#{att.seq}</span>
+                        </p>
+                      </div>
+
+                      <div className="ms-4 shrink-0 rounded-full bg-[#0A66FF]/10 p-2 text-[#0A66FF] transition group-hover:bg-[#0A66FF]/20">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                          <path fill="currentColor" d="M9 6l6 6l-6 6"/>
+                        </svg>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">
-</div>
-                  </div>
-                  <Link href={`/classes/${id}/chamadas/${c.seq}`} className="group block rounded-lg px-4 py-3 odd:bg-blue-50 even:bg-blue-100 hover:bg-blue-200/70 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-                    Abrir
                   </Link>
                 </li>
               ))}
