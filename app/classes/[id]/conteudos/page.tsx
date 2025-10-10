@@ -11,7 +11,6 @@ export default function ConteudosPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string|null>(null);
 
-  // modal form
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [objetivos, setObjetivos] = useState("");
@@ -20,7 +19,6 @@ export default function ConteudosPage() {
   const [bncc, setBncc] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // upload
   const fileRef = useRef<HTMLInputElement|null>(null);
   const [fname, setFname] = useState<string|null>(null);
   const [importing, setImporting] = useState(false);
@@ -50,10 +48,7 @@ export default function ConteudosPage() {
       const res = await fetch(`/api/classes/${id}/conteudos`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          objetivos, desenvolvimento, recursos, bncc
-        })
+        body: JSON.stringify({ title: title.trim(), objetivos, desenvolvimento, recursos, bncc })
       });
       const data = await res.json().catch(()=> ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao salvar");
@@ -90,27 +85,20 @@ export default function ConteudosPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-      {/* Header */}
       <div className="mb-6 rounded-2xl border bg-white p-5 sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <Link href={`/classes/${id}`} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">Voltar</Link>
         </div>
-        <h1 className="text-2xl font-semibold">
-          Conteúdos — <span className="text-[#0A66FF]">Turma</span>
-        </h1>
+        <h1 className="text-2xl font-semibold">Conteúdos — <span className="text-[#0A66FF]">Turma</span></h1>
         <p className="mt-1 text-sm text-gray-600">Gerencie os conteúdos desta turma.</p>
 
         <div className="mt-4">
-          <button
-            onClick={()=> setOpen(true)}
-            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90"
-          >
+          <button onClick={()=> setOpen(true)} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
             + Adicionar conteúdo
           </button>
         </div>
       </div>
 
-      {/* Lista */}
       <div className="rounded-2xl border bg-white">
         {loading ? (
           <p className="p-4 text-sm text-gray-600">Carregando…</p>
@@ -127,8 +115,9 @@ export default function ConteudosPage() {
                 <div className="text-sm">
                   <div className="font-medium">{it.seq} — {it.title}</div>
                 </div>
+                {/* ✅ agora aponta para /conteudos/[seq] */}
                 <Link
-                  href={`/classes/${id}/chamadas/${it.seq}`}
+                  href={`/classes/${id}/conteudos/${it.seq}`}
                   className="rounded-full border px-3 py-1 text-sm hover:border-blue-400 hover:text-blue-700"
                 >
                   Abrir
@@ -139,7 +128,6 @@ export default function ConteudosPage() {
         )}
       </div>
 
-      {/* Rodapé: Import por CSV/XLSX */}
       <section className="mt-6 rounded-2xl border bg-white p-5 sm:p-6">
         <h2 className="text-base font-semibold">Enviar conteúdo por planilha</h2>
         <p className="mt-1 text-sm text-gray-600">
@@ -175,7 +163,7 @@ export default function ConteudosPage() {
         </div>
       </section>
 
-      {/* Modal simples */}
+      {/* Modal - igual à versão anterior */}
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-5 sm:p-6 shadow-lg">
