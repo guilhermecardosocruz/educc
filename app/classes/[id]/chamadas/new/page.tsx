@@ -22,7 +22,7 @@ export default function NewCallPage() {
   const [newContact, setNewContact] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // Importação planilha
+  // Import planilha
   const [uploadName, setUploadName] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
@@ -80,6 +80,22 @@ export default function NewCallPage() {
       setEditName("");
     } catch (e: any) {
       alert(e?.message || "Erro ao salvar");
+      console.error(e);
+    }
+  }
+  async function handleEditDelete() {
+    if (!id || !editId) return;
+    if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+    try {
+      const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao excluir");
+      setStudents(prev => prev.filter(s => s.id !== editId));
+      setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+      setEditId(null);
+      setEditName("");
+    } catch (e) {
+      alert("Erro ao excluir aluno");
       console.error(e);
     }
   }
@@ -161,7 +177,7 @@ export default function NewCallPage() {
     }
   }
 
-  // Criar chamada + salvar presença
+  // Criar chamada + presenças
   async function handleCreate() {
     if (!id) return;
     setSaving(true);
@@ -198,6 +214,40 @@ export default function NewCallPage() {
     () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
     [students, presence]
   );
+
+  // Importação CSV/XLSX (escopo local do componente)
+  const __handleImportSend = async () => {
+    if (!id || !uploadFile) {
+      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+
+      // Recarregar alunos e refazer mapa de presenças (marca todos como presentes)
+      const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+      const data2 = await res2.json().catch(() => ({}));
+      if (data2?.ok && Array.isArray(data2.students)) {
+        setStudents(data2.students);
+        const next: Record<string, boolean> = {};
+        for (const st of data2.students) next[st.id] = true;
+        setPresence(next);
+      }
+      setUploadName(null);
+      setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      alert("Erro ao importar planilha");
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
@@ -390,7 +440,7 @@ export default function NewCallPage() {
 
                   <button
                     type="button"
-                    onClick={handleImportSend}
+                    onClick={__handleImportSend}
                     disabled={!uploadFile || importing}
                     className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                   >
@@ -445,6 +495,13 @@ export default function NewCallPage() {
                 className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
               >
                 Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleEditDelete}
+                className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+              >
+                Excluir aluno
               </button>
             </div>
           </div>
