@@ -33,6 +33,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <main className="mx-auto max-w-5xl px-6 py-10">
       {/* Cabeçalho */}
       <div className="rounded-2xl border bg-white/90 backdrop-blur p-6 shadow-sm">
+        <Link href={`/classes/`} className="inline-flex items-center text-sm text-[#0A66FF] hover:underline mb-3">← Voltar para a Turma</Link>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">
