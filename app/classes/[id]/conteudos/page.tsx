@@ -1,46 +1,48 @@
-import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import ConteudosClient from "./ui";
 
-export default async function ConteudosListPage({ params }: { params: Promise<{ id: string }> }) {
+export const dynamic = "force-dynamic";
+
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-
-  const user = await requireUser();
-  if (!user) redirect("/login");
-
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true, name: true } });
-  if (!cls) notFound();
-
-  const items = await prisma.content.findMany({
-    where: { classId: id },
-    orderBy: { seq: "desc" },
-    select: { seq: true, title: true }
+  const cls = await prisma.class.findFirst({
+    where: { id },
+    select: { id: true, name: true }
   });
 
-  return (
-    <main className="min-h-screen">
-      <section className="bg-gradient-to-br from-[var(--color-brand-blue)]/90 to-[var(--color-brand-blue)] text-white">
-        <div className="max-w-5xl mx-auto px-6 py-10">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs/5 uppercase tracking-widest text-white/80">EDUCC</p>
-              <h1 className="text-2xl font-bold">Conteúdos • {cls.name}</h1>
-            </div>
-            <Link href={`/classes/${cls.id}`} className="rounded-xl bg-white/10 px-4 py-2 text-sm backdrop-blur hover:bg-white/15">← Turma</Link>
-          </div>
+  if (!cls) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <div className="rounded-2xl border bg-white p-8 text-center">
+          <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
+          <Link href="/dashboard" className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
+            Voltar
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
-          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {items.length === 0 ? (
-              <p className="text-white/90">Ainda não há conteúdos.</p>
-            ) : items.map((c) => (
-              <Link key={c.seq} href={`/classes/${cls.id}/conteudos/${c.seq}`} className="aspect-square rounded-2xl bg-white/10 hover:bg-white/20 transition p-4 flex items-end">
-                <div className="text-sm font-semibold">#{c.seq} — {c.title}</div>
-              </Link>
-            ))}
+  return (
+    <main className="mx-auto max-w-5xl px-6 py-10">
+      <div className="rounded-2xl border bg-white/90 backdrop-blur p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href={`/classes/${cls.id}`}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]">
+            Voltar
+          </Link>
+          <div className="text-right">
+            <h1 className="text-xl font-semibold text-gray-900">
+              Conteúdos — <span className="text-[#0A66FF]">{cls.name}</span>
+            </h1>
+            <p className="mt-1 text-sm text-gray-600">Publique aulas com objetivo e imagem — estilo feed.</p>
           </div>
         </div>
-      </section>
+      </div>
+
+      <ConteudosClient classId={cls.id} />
     </main>
   );
 }
