@@ -495,11 +495,7 @@ export default function EditChamadaClient({
                   </a>
                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
                     Baixar modelo XLSX
-                  </a>
-                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/README.txt" target="_blank" rel="noreferrer">
-                    Ver instruções
-                  </a>
-                </div>
+                  </a></div>
               </div>
             </div>
           </div>
