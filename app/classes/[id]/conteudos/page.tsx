@@ -42,6 +42,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               href={`/classes/${cls.id}/conteudos/import`}
               className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
             >
+            <Link
+              href={`/classes/${cls.id}/conteudos/new`}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90"
+            >
+              Adicionar conteúdo
+            </Link>
               Importar conteúdos por planilha
             </Link>
           </div>
