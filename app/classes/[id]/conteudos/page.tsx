@@ -10,10 +10,14 @@ async function safeJson(res: Response) {
 
 async function getClass(id: string) {
   try {
-    const r = await fetch(`/api/classes/${id}`, { cache: "no-store" });
+    const r = await fetch('/api/classes/' + id, {
+      cache: 'no-store',
+      credentials: 'include',
+    });
     if (!r.ok) return null;
     const j = await safeJson(r);
-    return j?.cls ?? null;
+    // A API de /api/classes/[id] retorna { ok, class: {...} }
+    return j?.class ?? null;
   } catch {
     return null;
   }
@@ -21,7 +25,10 @@ async function getClass(id: string) {
 
 async function getContents(id: string): Promise<ContentListItem[]> {
   try {
-    const r = await fetch(`/api/classes/${id}/conteudos`, { cache: "no-store" });
+    const r = await fetch(`/api/classes/${id}/conteudos`, {
+      cache: "no-store",
+      credentials: "include",
+    });
     if (!r.ok) return [];
     const j = await safeJson(r);
     return j?.list ?? j ?? [];
@@ -30,8 +37,7 @@ async function getContents(id: string): Promise<ContentListItem[]> {
   }
 }
 
-
-     export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   const [cls, contents] = await Promise.all([getClass(id), getContents(id)]);
@@ -61,7 +67,7 @@ async function getContents(id: string): Promise<ContentListItem[]> {
           <div className="flex items-center gap-2">
             <Link
               href={`/classes/${cls.id}`}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/30 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
+              className="inline-flex items-center gap-2 rounded-xl bg:white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/30 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
             >
               Voltar
             </Link>
@@ -109,7 +115,7 @@ async function getContents(id: string): Promise<ContentListItem[]> {
           )}
         </div>
 
-        {/* Importação de conteúdos por planilha (usa o mesmo padrão da de alunos) */}
+        {/* Importação de conteúdos por planilha */}
         <div className="mt-8">
           <ImportContentsBox classId={cls.id} />
         </div>
