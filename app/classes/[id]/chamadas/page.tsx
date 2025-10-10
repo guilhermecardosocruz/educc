@@ -77,7 +77,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   >
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold text-gray-900">#{att.seq} — {(att.title?.trim() ? att.title : "Sem título")}</p>
+                        <p className="truncate text-[15px] font-semibold text-gray-900">{att.seq} — {(att.title?.trim() ? att.title : "Sem título")}</p>
                       </div>
 
                       <div className="ms-4 shrink-0 rounded-full bg-[#0A66FF]/10 p-2 text-[#0A66FF] transition group-hover:bg-[#0A66FF]/20">
