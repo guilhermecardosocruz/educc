@@ -186,9 +186,13 @@ export default function EditChamadaClient({
       const data2 = await res2.json().catch(() => ({}));
       if (data2?.ok && Array.isArray(data2.students)) {
         setStudents(data2.students);
-        const next: Record<string, boolean> = {};
-        for (const st of data2.students) next[st.id] = true;
-        setPresence(next);
+        setPresence((prev) => {
+    const n: Record<string, boolean> = { ...(prev || {}) };
+    for (const st of data2.students) {
+      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+    }
+    return n;
+  });
       }
       setUploadName(null);
       setUploadFile(null);
@@ -259,9 +263,13 @@ export default function EditChamadaClient({
       const data2 = await res2.json().catch(() => ({}));
       if (data2?.ok && Array.isArray(data2.students)) {
         setStudents(data2.students);
-        const next: Record<string, boolean> = {};
-        for (const st of data2.students) next[st.id] = true;
-        setPresence(next);
+        setPresence((prev) => {
+    const n: Record<string, boolean> = { ...(prev || {}) };
+    for (const st of data2.students) {
+      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+    }
+    return n;
+  });
       }
       setUploadName(null);
       setUploadFile(null);
