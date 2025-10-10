@@ -12,7 +12,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!cls) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10">
-        <div className="rounded-2xl border bg-white p-8 text-center">
+              <Link href="/classes" className="inline-flex items-center text-sm text-[#0A66FF] hover:underline mb-3">← Voltar para Turmas</Link>
+<div className="rounded-2xl border bg-white p-8 text-center">
           <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
           <Link href="/classes" className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
             Voltar
@@ -71,17 +72,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <li key={att.seq} className="odd:bg-blue-50/40 even:bg-blue-100/30">
                   <Link
                     href={`/classes/${cls.id}/chamadas/${att.seq}`}
-                    className="group block px-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+                    className="group block px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
                     title={att.title || `Chamada #${att.seq}`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold text-gray-900">
-                          {att.title?.trim() ? att.title : `Chamada #${att.seq}`}
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-600">
-                          Sequência: <span className="font-medium text-gray-800">#{att.seq}</span>
-                        </p>
+                        <p className="truncate text-[15px] font-semibold text-gray-900">#{att.seq} — {(att.title?.trim() ? att.title : "Sem título")}</p>
                       </div>
 
                       <div className="ms-4 shrink-0 rounded-full bg-[#0A66FF]/10 p-2 text-[#0A66FF] transition group-hover:bg-[#0A66FF]/20">
