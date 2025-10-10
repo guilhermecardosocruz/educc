@@ -74,7 +74,7 @@ export default function NewCallPage() {
         body: JSON.stringify({ name }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao salvar");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
       setEditId(null);
       setEditName("");
@@ -89,12 +89,12 @@ export default function NewCallPage() {
     try {
       const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao excluir");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       setStudents(prev => prev.filter(s => s.id !== editId));
       setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
       setEditId(null);
       setEditName("");
-    } catch (e) {
+    } catch (e: any) {
       alert("Erro ao excluir aluno");
       console.error(e);
     }
@@ -157,7 +157,7 @@ export default function NewCallPage() {
       fd.append("file", uploadFile);
       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
       const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
       const data2 = await res2.json();
@@ -170,7 +170,7 @@ export default function NewCallPage() {
       setUploadName(null); setUploadFile(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
-      alert("Erro ao importar planilha");
+      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
       console.error(e);
     } finally {
       setImporting(false);
@@ -188,7 +188,7 @@ export default function NewCallPage() {
         body: JSON.stringify({ title: title.trim() || undefined })
       });
       const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao criar");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       const seq: number = data.attendance.seq;
       const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
@@ -227,7 +227,7 @@ export default function NewCallPage() {
       fd.append("file", uploadFile);
       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       // Recarregar alunos e refazer mapa de presenças (marca todos como presentes)
       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
@@ -242,7 +242,7 @@ export default function NewCallPage() {
       setUploadFile(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
-      alert("Erro ao importar planilha");
+      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
       console.error(e);
     } finally {
       setImporting(false);
