@@ -41,10 +41,8 @@ export const POST = async (req: Request, ctx: { params: Promise<{ id: string }> 
   if (!file) return NextResponse.json({ ok:false, error: "Arquivo ausente" }, { status: 400 });
 
   const ctype = (file.type || "").toLowerCase();
-
-  // CSV por enquanto; XLSX retorna 415
   if (ctype.includes("spreadsheetml")) {
-    return NextResponse.json({ ok:false, error: "XLSX ainda não suportado. Exporte para CSV." }, { status: 415 });
+    return NextResponse.json({ ok:false, error: "XLSX ainda não suportado nesta rota. Exporte para CSV." }, { status: 415 });
   }
 
   const text = await file.text();
@@ -53,8 +51,6 @@ export const POST = async (req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok:false, error: "Planilha vazia ou inválida" }, { status: 400 });
   }
 
-  // Cabeçalhos esperados:
-  // Aula, Título, Conteúdo da Aula, Objetivos, Desenvolvimento das Atividades, Recursos Didáticos, BNCC
   const normalize = (s: string) => s?.trim() || "";
   let created = 0, updated = 0;
 

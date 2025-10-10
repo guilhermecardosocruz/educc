@@ -16,8 +16,7 @@ async function getClass(id: string) {
     });
     if (!r.ok) return null;
     const j = await safeJson(r);
-    // A API de /api/classes/[id] retorna { ok, class: {...} }
-    return j?.class ?? null;
+    return j?.class ?? null; // API retorna { ok, class: {...} }
   } catch {
     return null;
   }
@@ -67,7 +66,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <div className="flex items-center gap-2">
             <Link
               href={`/classes/${cls.id}`}
-              className="inline-flex items-center gap-2 rounded-xl bg:white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/30 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
+              className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/30 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
             >
               Voltar
             </Link>

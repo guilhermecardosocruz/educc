@@ -7,7 +7,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  // garante que a turma é do usuário
   const cls = await prisma.class.findFirst({
     where: { id, ownerId: user.id },
     select: { id: true }
