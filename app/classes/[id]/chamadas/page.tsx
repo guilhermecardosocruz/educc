@@ -12,10 +12,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!cls) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10">
-              <Link href="/classes" className="inline-flex items-center text-sm text-[#0A66FF] hover:underline mb-3">← Voltar para Turmas</Link>
+              <Link href={`/classes/`} className="inline-flex items-center text-sm text-[#0A66FF] hover:underline mb-3">← Voltar para a Turma</Link>
 <div className="rounded-2xl border bg-white p-8 text-center">
           <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
-          <Link href="/classes" className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
+          <Link href={`/classes/`} className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
             Voltar
           </Link>
         </div>
