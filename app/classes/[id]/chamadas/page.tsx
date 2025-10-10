@@ -1,49 +1,73 @@
-import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import ChamadasClient from "./ui";
+import { prisma } from "@/lib/prisma";
+import { notFound } from "next/navigation";
 
-export default async function ChamadasPage({ params }: { params: Promise<{ id: string }> }) {
+type Params = { id: string };
+
+export default async function ChamadasPage({ params }: { params: Promise<Params> }) {
   const { id } = await params;
 
-  const user = await requireUser();
-  if (!user) redirect("/login");
-
-  const cls = await prisma.class.findFirst({
-    where: { id, ownerId: user.id },
+  // Confere se a turma existe
+  const cls = await prisma.class.findUnique({
+    where: { id },
     select: { id: true, name: true }
   });
-  if (!cls) notFound();
+  if (!cls) return notFound();
+
+  // Lista chamadas (ordem desc por seq)
+  const chamadas = await prisma.attendance.findMany({
+    where: { classId: id },
+    orderBy: { seq: "desc" },
+    select: { seq: true, title: true, createdAt: true }
+  });
 
   return (
-    <main className="min-h-screen">
-      <section className="bg-gradient-to-br from-[var(--color-brand-blue)]/90 to-[var(--color-brand-blue)] text-white">
-        <div className="mx-auto max-w-5xl px-6 py-10">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs/5 uppercase tracking-widest text-white/80">EDUCC</p>
-              <h1 className="mt-1 text-2xl sm:text-3xl font-bold">
-                Chamadas • <span className="opacity-95">{cls.name}</span>
-              </h1>
-            </div>
-            <div className="flex gap-2">
-              <Link
-                href={`/classes/${cls.id}`}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur hover:bg-white/15 transition"
-              >
-                ← Turma
-              </Link>
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur hover:bg-white/15 transition"
-              >
-                Dashboard
-              </Link>
-            </div>
-          </div>
+    <main className="mx-auto max-w-5xl px-4 py-6">
+      <nav className="mb-4 text-sm">
+        <Link href={`/classes/${id}`} className="text-blue-700 hover:underline">Voltar para Turma</Link>
+      </nav>
 
-          <ChamadasClient classId={cls.id} />
+      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b px-5 py-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Chamadas — {cls.name}</h1>
+            <p className="text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
+          </div>
+          <Link
+            href={`/classes/${id}/chamadas/new`}
+            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90"
+          >
+            Nova chamada
+          </Link>
+        </div>
+
+        <div className="px-5 py-5">
+          {chamadas.length === 0 ? (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 text-sm text-gray-700">
+              Nenhuma chamada criada ainda. Clique em <b>Nova chamada</b> para começar.
+            </div>
+          ) : (
+            <ul className="divide-y rounded-2xl border">
+              {chamadas.map((c) => (
+                <li key={c.seq} className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <div className="font-medium text-gray-900">
+                      {c.title?.length ? c.title : `Chamada #${c.seq}`}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(c.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <Link
+                    href={`/classes/${id}/chamadas/${c.seq}`}
+                    className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-400 hover:text-blue-700"
+                  >
+                    Abrir
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
     </main>
