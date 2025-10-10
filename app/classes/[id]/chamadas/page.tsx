@@ -24,7 +24,7 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
       <nav className="mb-4 text-sm">
-        <Link href={`/classes/${id}`} className="text-blue-700 hover:underline">Voltar para Turma</Link>
+        <Link href={`/classes/${id}`} className="group block rounded-lg px-4 py-3 odd:bg-blue-50 even:bg-blue-100 hover:bg-blue-200/70 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">Voltar para Turma</Link>
       </nav>
 
       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5 bg-white">
@@ -33,10 +33,7 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
             <h1 className="text-xl font-semibold text-gray-900">Chamadas — {cls.name}</h1>
             <p className="text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
           </div>
-          <Link
-            href={`/classes/${id}/chamadas/new`}
-            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 bg-white"
-          >
+          <Link href={`/classes/${id}/chamadas/new`} className="group block rounded-lg px-4 py-3 odd:bg-blue-50 even:bg-blue-100 hover:bg-blue-200/70 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
             Nova chamada
           </Link>
         </div>
@@ -47,7 +44,7 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
               Nenhuma chamada criada ainda. Clique em <b>Nova chamada</b> para começar.
             </div>
           ) : (
-            <ul className="divide-y rounded-2xl border divide-blue-200 bg-white">
+            <ul className="divide-y rounded-2xl border divide-blue-200 bg-white divide-blue-200">
               {chamadas.map((c) => (
                 <li key={c.seq} className="flex items-center justify-between px-4 py-3">
                   <div>
@@ -57,10 +54,7 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
                     <div className="text-xs text-gray-500">
 </div>
                   </div>
-                  <Link
-                    href={`/classes/${id}/chamadas/${c.seq}`}
-                    className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-400 hover:text-blue-700 bg-white"
-                  >
+                  <Link href={`/classes/${id}/chamadas/${c.seq}`} className="group block rounded-lg px-4 py-3 odd:bg-blue-50 even:bg-blue-100 hover:bg-blue-200/70 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                     Abrir
                   </Link>
                 </li>
