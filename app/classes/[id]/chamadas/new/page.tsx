@@ -201,7 +201,7 @@ export default function NewCallPage() {
       const d2 = await res2.json();
       if (!res2.ok || !d2?.ok) throw new Error(d2?.error || "Falha ao salvar presenças");
 
-      router.push(`/classes//chamadas`);
+      router.push(`/classes/${id}/chamadas`);
     } catch (e) {
       alert("Erro ao criar/salvar chamada");
       console.error(e);
