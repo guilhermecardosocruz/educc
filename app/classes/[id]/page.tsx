@@ -20,11 +20,12 @@ export default async function ClassPage({ params }: { params: Promise<{ id: stri
         <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between">
           <div>
             <p className="text-xs/5 uppercase tracking-widest text-white/80">EDUCC</p>
+          <Link href={`/classes`} className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]">Voltar</Link>
             <h1 className="text-2xl font-bold">{cls.name}</h1>
           </div>
           <div className="flex gap-2">
-            <Link href={`/classes/${cls.id}/chamadas`} className="rounded-xl bg-white/10 px-4 py-2 text-sm backdrop-blur hover:bg-white/15">Chamadas</Link>
-            <Link href={`/classes/${cls.id}/conteudos`} className="rounded-xl bg-white/10 px-4 py-2 text-sm backdrop-blur hover:bg-white/15">Conteúdos</Link>
+            
+            
           </div>
         </div>
       </section>
