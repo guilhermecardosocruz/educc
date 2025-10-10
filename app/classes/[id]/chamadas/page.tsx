@@ -27,7 +27,7 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
         <Link href={`/classes/${id}`} className="text-blue-700 hover:underline">Voltar para Turma</Link>
       </nav>
 
-      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5 bg-white">
         <div className="flex items-center justify-between border-b px-5 py-4">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Chamadas — {cls.name}</h1>
@@ -35,7 +35,7 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
           </div>
           <Link
             href={`/classes/${id}/chamadas/new`}
-            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90"
+            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 bg-white"
           >
             Nova chamada
           </Link>
@@ -43,11 +43,11 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
 
         <div className="px-5 py-5">
           {chamadas.length === 0 ? (
-            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 text-sm text-gray-700">
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 text-sm text-gray-700 bg-white">
               Nenhuma chamada criada ainda. Clique em <b>Nova chamada</b> para começar.
             </div>
           ) : (
-            <ul className="divide-y rounded-2xl border">
+            <ul className="divide-y rounded-2xl border divide-blue-200 bg-white">
               {chamadas.map((c) => (
                 <li key={c.seq} className="flex items-center justify-between px-4 py-3">
                   <div>
@@ -55,12 +55,11 @@ export default async function ChamadasPage({ params }: { params: Promise<Params>
                       {c.title?.length ? c.title : `Chamada #${c.seq}`}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {new Date(c.createdAt).toLocaleString()}
-                    </div>
+</div>
                   </div>
                   <Link
                     href={`/classes/${id}/chamadas/${c.seq}`}
-                    className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-400 hover:text-blue-700"
+                    className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-400 hover:text-blue-700 bg-white"
                   >
                     Abrir
                   </Link>
