@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
-// Normaliza header (lowercase, sem espaços/acentos/pontuação básica)
+// Garantir Node.js (xlsx não roda no edge)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Row = { name?: string; cpf?: string; contact?: string };
+
 function norm(h: string) {
   return h
     .toLowerCase()
@@ -10,8 +15,6 @@ function norm(h: string) {
     .replace(/[^a-z0-9]+/g, "")
     .trim();
 }
-
-type Row = { name?: string; cpf?: string; contact?: string };
 
 async function parseCSV(file: File): Promise<Row[]> {
   const text = await file.text();
@@ -35,7 +38,6 @@ async function parseCSV(file: File): Promise<Row[]> {
 
 async function parseXLSX(file: File): Promise<Row[]> {
   const ab = await file.arrayBuffer();
-  // import dinâmico evita peso no edge quando não usado
   const XLSX = await import("xlsx");
   const wb = XLSX.read(ab, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -47,12 +49,9 @@ async function parseXLSX(file: File): Promise<Row[]> {
       map[nk] = r[k];
     }
     const row: Row = {};
-    row.name = map["name"] ?? map["nome"] ?? "";
-    row.cpf = map["cpf"] ?? "";
-    row.contact = map["contact"] ?? map["contato"] ?? map["telefone"] ?? map["whatsapp"] ?? "";
-    if (typeof row.name === "string") row.name = row.name.trim();
-    if (typeof row.cpf === "string") row.cpf = row.cpf.trim();
-    if (typeof row.contact === "string") row.contact = row.contact.trim();
+    row.name = (map["name"] ?? map["nome"] ?? "").toString().trim();
+    row.cpf = (map["cpf"] ?? "").toString().trim();
+    row.contact = (map["contact"] ?? map["contato"] ?? map["telefone"] ?? map["whatsapp"] ?? "").toString().trim();
     return row;
   });
 }
@@ -64,11 +63,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file") as File | null;
-  if (!file) {
-    return NextResponse.json({ ok: false, error: "Arquivo não enviado (campo 'file')." }, { status: 400 });
-  }
+  if (!file) return NextResponse.json({ ok: false, error: "Arquivo não enviado (campo 'file')." }, { status: 400 });
 
-  // Checagem básica da turma ser do usuário
   const cls = await prisma.class.findFirst({
     where: { id, ownerId: user.id },
     select: { id: true }
@@ -76,18 +72,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada." }, { status: 404 });
 
   try {
-    const name = (file.name || "").toLowerCase();
+    const mime = (file.type || "").toLowerCase();
+    const name = (file as any).name ? String((file as any).name).toLowerCase() : "";
+
     let rows: Row[] = [];
-    if (name.endsWith(".csv")) {
-      rows = await parseCSV(file);
-    } else if (name.endsWith(".xlsx")) {
+
+    // 1) CSV explícito por MIME ou extensão
+    const looksCSV = mime.includes("csv") || name.endsWith(".csv");
+    // 2) XLSX explícito por MIME ou extensão
+    const looksXLSX = mime.includes("spreadsheet") || mime.includes("excel") || name.endsWith(".xlsx");
+
+    if (looksXLSX) {
       rows = await parseXLSX(file);
-    } else {
-      // fallback: tenta CSV pelo conteúdo
+    } else if (looksCSV) {
       rows = await parseCSV(file);
+    } else {
+      // Caso incerto (sem name e sem MIME confiável): tenta XLSX primeiro e cai pra CSV
+      try {
+        rows = await parseXLSX(file);
+      } catch {
+        rows = await parseCSV(file);
+      }
     }
 
-    // Limpa/valida: apenas nome obrigatório; cpf/contact opcionais
     const toInsert = rows
       .map(r => ({
         name: (r.name ?? "").toString().trim(),
@@ -97,10 +104,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .filter(r => r.name.length > 0);
 
     if (!toInsert.length) {
-      return NextResponse.json({ ok: false, error: "Planilha sem linhas válidas (coluna 'name' é obrigatória)." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Planilha sem linhas válidas. A coluna 'name' é obrigatória." }, { status: 400 });
     }
 
-    // Insere em lote (de forma simples, uma a uma) respeitando opcionais
     await prisma.$transaction(async (tx) => {
       for (const r of toInsert) {
         await tx.student.create({
