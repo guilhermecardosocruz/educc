@@ -1,11 +1,9 @@
-export const metadata = { title: "Offline • EDUCC" };
-
-export default function Offline() {
+export default function OfflinePage() {
   return (
-    <main className="min-h-screen flex items-center justify-center p-8 text-center">
-      <div>
+    <main className="min-h-screen grid place-items-center p-6 bg-white">
+      <div className="max-w-md text-center">
         <h1 className="text-2xl font-semibold">Você está offline</h1>
-        <p className="text-gray-600 mt-2">Alguns recursos podem não estar disponíveis sem conexão.</p>
+        <p className="mt-2 text-gray-600">Conecte-se à internet para acessar todos os recursos.</p>
       </div>
     </main>
   );

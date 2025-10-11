@@ -1,26 +1,20 @@
 import { NextResponse } from "next/server";
 
-export const dynamic = "force-static"; // permite cache estático em prod
-
-export async function GET() {
+export function GET() {
   const manifest = {
     name: "EDUCC",
     short_name: "EDUCC",
-    id: "/",
-    start_url: "/?source=pwa",
+    description: "Gestão de turmas, chamadas e conteúdos — instalável.",
+    start_url: "/",
     scope: "/",
     display: "standalone",
-    display_override: ["standalone", "minimal-ui"],
-    background_color: "#ffffff",
+    orientation: "portrait",
+    background_color: "#FFFFFF",
     theme_color: "#0A66FF",
-    description: "App EDUCC",
     icons: [
-      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
     ]
   };
-
-  return NextResponse.json(manifest, {
-    headers: { "Content-Type": "application/manifest+json" }
-  });
+  return NextResponse.json(manifest);
 }
