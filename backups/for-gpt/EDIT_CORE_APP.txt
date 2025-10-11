@@ -1,0 +1,3026 @@
+
+
+===== app/(auth)/login/page.tsx =====
+import LoginCard from "@/components/LoginCard";
+
+export default function LoginPage() {
+  return (
+    <main className="min-h-screen flex items-center justify-center p-6 bg-white">
+      <LoginCard />
+    </main>
+  );
+}
+
+
+===== app/(auth)/recover-email/page.tsx =====
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+
+export default function RecoverEmailPage() {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/auth/recover-email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      await res.json().catch(()=> ({}));
+      setDone(true);
+    } catch {
+      setErr("Falha de rede. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+      <section className="hidden lg:flex items-center justify-center bg-[var(--color-brand-blue)] text-white">
+        <div className="max-w-xl px-8">
+          <h2 className="text-4xl font-extrabold leading-tight">
+            Recuperar conta por e-mail
+          </h2>
+          <p className="mt-4 text-white/90">
+            Enviaremos um link de recuperação ao seu e-mail.
+          </p>
+        </div>
+      </section>
+
+      <section className="flex items-center justify-center p-6 lg:p-12">
+        <div className="card p-8 max-w-md w-full">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+              <span className="font-semibold">EDUCC</span>
+            </div>
+            <Link href="/login" className="text-sm text-[var(--color-brand-blue)] hover:underline">
+              Voltar ao login
+            </Link>
+          </div>
+
+          <h1 className="text-2xl font-semibold mb-1">Recuperar por e-mail</h1>
+          <p className="text-sm text-gray-500 mb-6">Informe o e-mail cadastrado</p>
+
+          {done ? (
+            <div className="space-y-3">
+              <p className="text-green-700">
+                Se o e-mail existir, enviamos um link de recuperação. Verifique sua caixa de entrada.
+              </p>
+              <Link href="/login" className="btn-primary inline-flex justify-center">Voltar ao login</Link>
+            </div>
+          ) : (
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm mb-1">E-mail</label>
+                <input
+                    className="input"
+                    type="email"
+                    placeholder="voce@exemplo.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                />
+              </div>
+
+              {err && <p className="text-sm text-red-600">{err}</p>}
+
+              <button type="submit" className="btn-primary w-full" disabled={loading}>
+                {loading ? "Enviando..." : "Enviar link"}
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+
+===== app/(auth)/recover/page.tsx =====
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  // redireciona imediatamente
+  redirect("/recover-email");
+}
+
+
+===== app/(auth)/register/page.tsx =====
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+// Helpers de máscara
+function onlyDigits(s: string) { return s.replace(/\D+/g, ""); }
+
+function maskCPF(v: string) {
+  const d = onlyDigits(v).slice(0, 11);
+  const p1 = d.slice(0,3);
+  const p2 = d.slice(3,6);
+  const p3 = d.slice(6,9);
+  const p4 = d.slice(9,11);
+  let out = p1;
+  if (p2) out += "." + p2;
+  if (p3) out += "." + p3;
+  if (p4) out += "-" + p4;
+  return out;
+}
+
+function maskPhoneBR(v: string) {
+  const d = onlyDigits(v).slice(0, 11);
+  const ddd = d.slice(0,2);
+  const a = d.length > 10 ? d.slice(2,7) : d.slice(2,6);
+  const b = d.length > 10 ? d.slice(7,11) : d.slice(6,10);
+  let out = ddd ? `(${ddd}` : "";
+  if (ddd && d.length >= 2) out += ") ";
+  if (a) out += a;
+  if (b) out += "-" + b;
+  return out;
+}
+
+export default function RegisterPage() {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    name: "",
+    cpf: "",
+    birthDate: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: ""
+  });
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function update<K extends keyof typeof form>(k: K, v: string) {
+    setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setErr(null);
+
+    // normalizações
+    const email = form.email.trim().toLowerCase();
+    const cpf = form.cpf.trim();
+    const phone = form.phone.trim();
+    const name = form.name.trim();
+
+    if (form.password.length < 8) {
+      setErr("A senha deve ter pelo menos 8 caracteres");
+      setLoading(false);
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setErr("As senhas não conferem");
+      setLoading(false);
+      return;
+    }
+    // Validações básicas de client
+    if (onlyDigits(cpf).length !== 11) {
+      setErr("CPF inválido");
+      setLoading(false);
+      return;
+    }
+    const phoneDigits = onlyDigits(phone);
+    if (!(phoneDigits.length === 10 || phoneDigits.length === 11)) {
+      setErr("Telefone inválido");
+      setLoading(false);
+      return;
+    }
+    if (!form.birthDate) {
+      setErr("Informe a data de nascimento");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          name,
+          cpf,        // API já remove dígitos; máscara ok
+          phone,      // idem
+          email       // normalizado
+        })
+      });
+      const data = await res.json().catch(()=> ({}));
+      if (!res.ok || !data?.ok) {
+        setErr(data?.error ?? "Erro ao criar conta");
+      } else {
+        router.push("/login");
+      }
+    } catch {
+      setErr("Falha de rede. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+      <section className="hidden lg:flex items-center justify-center bg-[var(--color-brand-blue)] text-white">
+        <div className="max-w-xl px-8">
+          <h2 className="text-4xl font-extrabold leading-tight">
+            Crie sua conta EDUCC
+          </h2>
+          <p className="mt-4 text-white/90">
+            Acesso rápido e seguro.
+          </p>
+        </div>
+      </section>
+
+      <section className="flex items-center justify-center p-6 lg:p-12">
+        <div className="card p-8 max-w-lg w-full">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+              <span className="font-semibold">EDUCC</span>
+            </div>
+            <Link href="/login" className="text-sm text-[var(--color-brand-blue)] hover:underline">
+              Já tenho conta
+            </Link>
+          </div>
+
+          <h1 className="text-2xl font-semibold mb-1">Criar conta</h1>
+          <p className="text-sm text-gray-500 mb-6">Preencha seus dados</p>
+
+          <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-sm mb-1">Nome completo</label>
+              <input
+                className="input"
+                value={form.name}
+                onChange={e=>update("name", e.target.value)}
+                required
+                autoComplete="name"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1">CPF</label>
+              <input
+                className="input"
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                value={form.cpf}
+                onChange={(e)=> update("cpf", maskCPF(e.target.value))}
+                maxLength={14}                             
+                required
+                pattern="^\d{3}\.\d{3}\.\d{3}-\d{2}$"
+                title="Formato: 000.000.000-00"
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1">Data de nascimento</label>
+              <input
+                className="input"
+                type="date"
+                value={form.birthDate}
+                onChange={e=>update("birthDate", e.target.value)}
+                required
+                autoComplete="bday"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1">E-mail</label>
+              <input
+                className="input"
+                type="email"
+                placeholder="voce@exemplo.com"
+                value={form.email}
+                onChange={(e)=> update("email", e.target.value.trim())}
+                required
+                autoComplete="email"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1">Telefone (Whats)</label>
+              <input
+                className="input"
+                type="tel"
+                inputMode="tel"
+                placeholder="(00) 00000-0000"
+                value={form.phone}
+                onChange={(e)=> update("phone", maskPhoneBR(e.target.value))}
+                maxLength={15}
+                required
+                pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"
+                title="Formato: (00) 00000-0000"
+                autoComplete="tel"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1">Senha</label>
+              <input
+                className="input"
+                type="password"
+                value={form.password}
+                onChange={e=>update("password", e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-1">Confirmar senha</label>
+              <input
+                className="input"
+                type="password"
+                value={form.confirmPassword}
+                onChange={e=>update("confirmPassword", e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </div>
+
+            {err && <p className="sm:col-span-2 text-sm text-red-600">{err}</p>}
+
+            <div className="sm:col-span-2">
+              <button type="submit" className="btn-primary w-full" disabled={loading}>
+                {loading ? "Criando..." : "Criar conta"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/chamadas/new/page.tsx =====
+"use client";
+
+import Link from "next/link";
+import { useRouter, useParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type Student = { id: string; name: string; cpf: string | null; contact: string | null };
+
+export default function NewCallPage() {
+  const router = useRouter();
+  const { id } = useParams<{ id: string }>();
+
+  const [title, setTitle] = useState("");
+  const [students, setStudents] = useState<Student[]>([]);
+  const [presence, setPresence] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Adicionar aluno
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newCpf, setNewCpf] = useState("");
+  const [newContact, setNewContact] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  // Import planilha
+  const [uploadName, setUploadName] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Editar aluno (modal)
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      if (!id) return;
+      const res = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+      const data = await res.json();
+      if (data?.ok && Array.isArray(data.students)) {
+        setStudents(data.students);
+        const initial: Record<string, boolean> = {};
+        for (const s of data.students) initial[s.id] = true;
+        setPresence(initial);
+      }
+    })();
+  }, [id]);
+
+  function toggleStudent(studentId: string) {
+    setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+  }
+  function setAll(v: boolean) {
+    const all: Record<string, boolean> = {};
+    for (const s of students) all[s.id] = v;
+    setPresence(all);
+  }
+
+  // Modal editar (duplo clique no nome)
+  function onDblClickStudent(st: Student) {
+    setEditId(st.id);
+    setEditName(st.name);
+  }
+  async function handleEditSave() {
+    if (!id || !editId) return;
+    const name = editName.trim();
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/classes/${id}/students/${editId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
+      setEditId(null);
+      setEditName("");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar");
+      console.error(e);
+    }
+  }
+  async function handleEditDelete() {
+    if (!id || !editId) return;
+    if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+    try {
+      const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setStudents(prev => prev.filter(s => s.id !== editId));
+      setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+      setEditId(null);
+      setEditName("");
+    } catch (e: any) {
+      alert("Erro ao excluir aluno");
+      console.error(e);
+    }
+  }
+
+  // Adicionar aluno
+  async function handleAddStudent() {
+    if (!id) return;
+    const name = newName.trim();
+    const cpf = newCpf.trim();
+    const contact = newContact.trim();
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
+      return;
+    }
+    setAdding(true);
+    try {
+      const body: any = { name };
+      if (cpf.length) body.cpf = cpf;
+      if (contact.length) body.contact = contact;
+
+      const res = await fetch(`/api/classes/${id}/students`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      let payload: any = null;
+      try { payload = await res.json(); } catch {}
+      if (!res.ok || !payload?.ok) {
+        let msg = "Erro ao adicionar aluno";
+        const e = payload?.error;
+        if (typeof e === "string") msg = e;
+        else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+        else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+        throw new Error(msg);
+      }
+
+      const st: Student = payload.student;
+      setStudents((prev) => [st, ...prev]);
+      setPresence((p) => ({ ...p, [st.id]: true }));
+      setNewName(""); setNewCpf(""); setNewContact("");
+      setShowAdd(false);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao adicionar aluno");
+      console.error(e);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  // Importação CSV/XLSX
+  async function handleImportSend() {
+    if (!id || !uploadFile) {
+      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+      const data2 = await res2.json();
+      if (data2?.ok && Array.isArray(data2.students)) {
+        setStudents(data2.students);
+        const next: Record<string, boolean> = {};
+        for (const s of data2.students) next[s.id] = true;
+        setPresence(next);
+      }
+      setUploadName(null); setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // Criar chamada + presenças
+  async function handleCreate() {
+    if (!id) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/classes/${id}/chamadas`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: title.trim() || undefined })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const seq: number = data.attendance.seq;
+      const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+
+      const res2 = await fetch(`/api/classes/${id}/chamadas/${seq}/presences`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ presences })
+      });
+      const d2 = await res2.json();
+      if (!res2.ok || !d2?.ok) throw new Error(d2?.error || "Falha ao salvar presenças");
+
+      router.push(`/classes/${id}/chamadas`);
+    } catch (e) {
+      alert("Erro ao criar/salvar chamada");
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalPresentes = useMemo(
+    () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+    [students, presence]
+  );
+
+  // Importação CSV/XLSX (escopo local do componente)
+  const __handleImportSend = async () => {
+    if (!id || !uploadFile) {
+      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      // Recarregar alunos e refazer mapa de presenças (marca todos como presentes)
+      const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+      const data2 = await res2.json().catch(() => ({}));
+      if (data2?.ok && Array.isArray(data2.students)) {
+        setStudents(data2.students);
+        setPresence((prev) => {
+    const n: Record<string, boolean> = { ...(prev || {}) };
+    for (const st of data2.students) {
+      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+    }
+    return n;
+  });
+      }
+      setUploadName(null);
+      setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-6">
+      <nav className="mb-4 text-sm">
+        <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">Voltar para Chamadas</Link>
+      </nav>
+
+      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Nova chamada</h1>
+            <p className="text-sm text-gray-600">Marque a presença e crie a chamada desta aula.</p>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Nome da aula</div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ex.: Aula 01 - Introdução"
+              className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-5 px-5 py-5">
+          {/* Adicionar aluno */}
+          {showAdd && (
+            <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Nome</label>
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ex.: Maria Silva"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+                  <input
+                    value={newCpf}
+                    onChange={(e) => setNewCpf(e.target.value)}
+                    placeholder="Somente números"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+                  <input
+                    value={newContact}
+                    onChange={(e) => setNewContact(e.target.value)}
+                    placeholder="Ex.: (48) 99999-9999"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddStudent}
+                  disabled={adding || newName.trim().length < 2}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {adding ? "Adicionando..." : "Salvar aluno"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de presença */}
+          <div className="rounded-2xl overflow-hidden border">
+            <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+              <div className="font-semibold">Lista de presença</div>
+              <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+            </div>
+
+            <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+              <div className="px-1.5 py-2 text-center">#</div>
+              <div className="px-3 py-2">Aluno</div>
+              <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto">
+              {students.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+              ) : students.map((s, idx) => {
+                const isEven = idx % 2 === 0;
+                return (
+                  <div
+                    key={s.id}
+                    className={[
+                      "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+                      "border-b border-blue-100",
+                      isEven ? "bg-blue-50/40" : "bg-white"
+                    ].join(" ")}
+                  >
+                    <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+                    <div className="px-3 py-2">
+                      <div
+                        className="font-medium text-gray-900 cursor-pointer select-none"
+                        onDoubleClick={() => onDblClickStudent(s)}
+                        title="Duplo clique para editar"
+                      >
+                        {s.name}
+                      </div>
+                    </div>
+                    <div className="px-1.5 py-2 text-center">
+                      <label className="inline-flex items-center">
+                        <span className="sr-only">Presença de {s.name}</span>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-blue-600"
+                          checked={!!presence[s.id]}
+                          onChange={() => toggleStudent(s.id)}
+                          aria-label={`Presença de ${s.name}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Barra de ações — abaixo da lista */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={saving}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Criar chamada"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdd((s) => !s)}
+              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+            >
+              Adicionar aluno
+            </button>
+          </div>
+
+          {/* Importação (CSV/XLSX) */}
+          <div className="rounded-2xl border">
+            <div className="border-b px-4 py-3">
+              <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+              <p className="text-xs text-gray-600 mt-1">
+                <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+              </p>
+            </div>
+
+            <div className="grid gap-3 px-4 py-4">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+                <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+                <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <input
+                    type="file"
+                    accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    id="students-file-input"
+                    ref={fileRef}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setUploadName(f ? f.name : null);
+                      setUploadFile(f);
+                    }}
+                  />
+                  <label
+                    htmlFor="students-file-input"
+                    className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+                  >
+                    Escolher arquivo
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={__handleImportSend}
+                    disabled={!uploadFile || importing}
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {importing ? "Enviando..." : "Enviar planilha"}
+                  </button>
+                </div>
+
+                {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+                    Baixar modelo CSV
+                  </a>
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+                    Baixar modelo XLSX
+                  </a></div>
+              </div>
+            </div>
+          </div>
+        </div>{/* /px-5 py-5 */}
+      </section>
+
+      {/* MODAL editar aluno */}
+      {editId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
+            <div className="mt-3 grid gap-2">
+              <label className="text-xs font-medium text-gray-700">Nome</label>
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                placeholder="Nome do aluno"
+              />
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleEditSave}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Salvar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setEditId(null); setEditName(""); }}
+                className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleEditDelete}
+                className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+              >
+                Excluir aluno
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/chamadas/page.tsx =====
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const cls = await prisma.class.findFirst({
+    where: { id },
+    select: { id: true, name: true }
+  });
+
+  if (!cls) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <div className="rounded-2xl border bg-white p-8 text-center">
+          <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
+          <Link
+            href="/classes"
+            className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90"
+          >
+            Voltar
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  const attendances = await prisma.attendance.findMany({
+    where: { classId: cls.id },
+    orderBy: [{ seq: "desc" }],
+    select: { seq: true, title: true }
+  });
+
+  return (
+    <main className="mx-auto max-w-5xl px-6 py-10">
+      {/* Cabeçalho */}
+      <div className="rounded-2xl border bg-white/90 backdrop-blur p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/classes/${cls.id}`}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+            >
+              Voltar
+            </Link>
+          </div>
+
+          <div className="text-right">
+            <h1 className="text-xl font-semibold text-gray-900">
+              Chamadas — <span className="text-[#0A66FF]">{cls.name}</span>
+            </h1>
+            <p className="mt-1 text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
+          </div>
+
+          <Link
+            href={`/classes/${cls.id}/chamadas/new`}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="-ms-1">
+              <path fill="currentColor" d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2z"/>
+            </svg>
+            Nova chamada
+          </Link>
+        </div>
+      </div>
+
+      {/* Lista */}
+      <section className="mt-6">
+        <div className="rounded-2xl border bg-white shadow-sm">
+          {attendances.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-gray-700">Ainda não há chamadas nesta turma.</p>
+              <Link
+                href={`/classes/${cls.id}/chamadas/new`}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0A66FF] px-4 py-2 text-sm font-medium text-[#0A66FF] hover:bg-[#0A66FF] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+              >
+                Criar primeira chamada
+              </Link>
+            </div>
+          ) : (
+            <ul className="divide-y divide-blue-100">
+              {attendances.map((att) => (
+                <li key={att.seq} className="odd:bg-blue-50/40 even:bg-blue-100/30">
+                  <Link
+                    href={`/classes/${cls.id}/chamadas/${att.seq}`}
+                    className="group block px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+                    title={att.title || `Chamada ${att.seq}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="truncate text-[15px] font-semibold text-gray-900">
+                        {att.seq} — {att.title?.trim() ? att.title : "Sem título"}
+                      </p>
+                      <div className="ms-4 shrink-0 rounded-full bg-[#0A66FF]/10 p-2 text-[#0A66FF] transition group-hover:bg-[#0A66FF]/20">
+                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                          <path fill="currentColor" d="M9 6l6 6l-6 6"/>
+                        </svg>
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/chamadas/[seq]/page.tsx =====
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { notFound, redirect } from "next/navigation";
+import ChamadaClient from "./ui";
+
+export default async function ChamadaPage({ params }: { params: Promise<{ id: string; seq: string }> }) {
+  const { id, seq } = await params;
+
+  const user = await requireUser();
+  if (!user) redirect("/login");
+
+  const cls = await prisma.class.findFirst({
+    where: { id, ownerId: user.id },
+    select: { id: true, name: true }
+  });
+  if (!cls) notFound();
+
+  // dados iniciais para preencher o client
+  const attendance = await prisma.attendance.findUnique({
+    where: { classId_seq: { classId: id, seq: Number(seq) } },
+    select: { seq: true, title: true }
+  });
+  if (!attendance) notFound();
+
+  const students = await prisma.student.findMany({
+    where: { classId: id },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, name: true, cpf: true, contact: true }
+  });
+
+
+  // carrega presenças salvas para esta chamada
+  const presences = await prisma.attendancePresence.findMany({
+    where: { classId: cls.id, seq: attendance.seq },
+    select: { studentId: true, present: true }
+  });
+  const initialPresence = Object.fromEntries(presences.map(r => [r.studentId, !!r.present]));
+  return <ChamadaClient classId={cls.id} className={cls.name} seq={attendance.seq} initialTitle={attendance.title} initialStudents={students} initialPresence={initialPresence}  />;
+}
+
+
+===== app/classes/[id]/chamadas/[seq]/ui.tsx =====
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type Student = { id: string; name: string; cpf: string | null; contact: string | null };
+
+export default function EditChamadaClient({
+  classId,
+  className,
+  seq,
+  initialTitle,
+  initialStudents
+}: {
+  classId: string;
+  className: string;
+  seq: number;
+  initialTitle: string;
+  initialStudents: Student[]; initialPresence?: Record<string, boolean>; }) {
+  const router = useRouter();
+
+  const [title, setTitle] = useState(initialTitle || "");
+  const [students, setStudents] = useState<Student[]>(initialStudents || []);
+  const [presence, setPresence] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Adicionar aluno
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newCpf, setNewCpf] = useState("");
+  const [newContact, setNewContact] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  // Import planilha
+  const [uploadName, setUploadName] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Editar aluno (modal)
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const map: Record<string, boolean> = {};
+        if (Array.isArray(data?.rows)) {
+          for (const r of data.rows) map[r.studentId] = !!r.present;
+        } else {
+          for (const s of initialStudents) map[s.id] = true;
+        }
+        setPresence(map);
+      } catch {
+        const map: Record<string, boolean> = {};
+        for (const s of initialStudents) map[s.id] = true;
+        setPresence(map);
+      }
+    })();
+  }, [classId, seq, initialStudents]);
+
+  function toggleStudent(studentId: string) {
+    setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+  }
+  function setAll(v: boolean) {
+    const all: Record<string, boolean> = {};
+    for (const s of students) all[s.id] = v;
+    setPresence(all);
+  }
+
+  // Modal editar
+  function onDblClickStudent(st: Student) {
+    setEditId(st.id);
+    setEditName(st.name);
+  }
+  async function handleEditSave() {
+    if (!editId) return;
+    const name = editName.trim();
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/classes/${classId}/students/${editId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
+      setEditId(null);
+      setEditName("");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar");
+      console.error(e);
+    }
+  }
+  async function handleEditDelete() {
+    if (!editId) return;
+    if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+    try {
+      const res = await fetch(`/api/classes/${classId}/students/${editId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setStudents(prev => prev.filter(s => s.id !== editId));
+      setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+      setEditId(null);
+      setEditName("");
+    } catch (e: any) {
+      alert("Erro ao excluir aluno");
+      console.error(e);
+    }
+  }
+
+  // Salvar presenças
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ presences })
+      });
+      const d = await res.json();
+      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao salvar presenças");
+      alert("Chamada atualizada com sucesso.");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar chamada");
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Excluir chamada
+  async function handleDelete() {
+    if (!confirm("Tem certeza que deseja excluir esta chamada? Esta ação não pode ser desfeita.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao excluir chamada");
+      router.push(`/classes/${classId}/chamadas`);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao excluir chamada");
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // Adicionar aluno
+  async function handleAddStudent() {
+    const name = newName.trim();
+    const cpf = newCpf.trim();
+    const contact = newContact.trim();
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
+      return;
+    }
+
+  // Importação CSV/XLSX
+  async function handleImportSend() {
+    if (!classId || !uploadFile) {
+      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      // Recarrega alunos e refaz mapa de presenças (marca todos como presentes por padrão)
+      const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+      const data2 = await res2.json().catch(() => ({}));
+      if (data2?.ok && Array.isArray(data2.students)) {
+        setStudents(data2.students);
+        setPresence((prev) => {
+    const n: Record<string, boolean> = { ...(prev || {}) };
+    for (const st of data2.students) {
+      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+    }
+    return n;
+  });
+      }
+      setUploadName(null);
+      setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  }
+    setAdding(true);
+    try {
+      const body: any = { name };
+      if (cpf.length) body.cpf = cpf;
+      if (contact.length) body.contact = contact;
+
+      const res = await fetch(`/api/classes/${classId}/students`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      let payload: any = null;
+      try { payload = await res.json(); } catch {}
+      if (!res.ok || !payload?.ok) {
+        let msg = "Erro ao adicionar aluno";
+        const e = payload?.error;
+        if (typeof e === "string") msg = e;
+        else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+        else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+        throw new Error(msg);
+      }
+
+      const st: Student = payload.student;
+      setStudents((prev) => [st, ...prev]);
+      setPresence((p) => ({ ...p, [st.id]: true }));
+      setNewName(""); setNewCpf(""); setNewContact("");
+      setShowAdd(false);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao adicionar aluno");
+      console.error(e);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  const totalPresentes = useMemo(
+    () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+    [students, presence]
+  );
+
+  // Importação CSV/XLSX (escopo local do componente)
+  const __handleImportSend = async () => {
+    if (!classId || !uploadFile) {
+      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      // Recarregar alunos e refazer mapa de presenças
+      const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+      const data2 = await res2.json().catch(() => ({}));
+      if (data2?.ok && Array.isArray(data2.students)) {
+        setStudents(data2.students);
+        setPresence((prev) => {
+    const n: Record<string, boolean> = { ...(prev || {}) };
+    for (const st of data2.students) {
+      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+    }
+    return n;
+  });
+      }
+      setUploadName(null);
+      setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-6">
+      <nav className="mb-4 text-sm">
+        <Link href={`/classes/${classId}/chamadas`} className="text-blue-700 hover:underline">
+          Voltar para Chamadas
+        </Link>
+      </nav>
+
+      <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">
+              Editar chamada <span className="text-gray-500">#{seq}</span> — {className}
+            </h1>
+            <p className="text-sm text-gray-600">Atualize presenças, cadastre alunos e gerencie esta chamada.</p>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Nome da aula</div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ex.: Aula 01 - Revisão"
+              className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-5 px-5 py-5">
+          {/* Adicionar aluno */}
+          {showAdd && (
+            <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Nome</label>
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ex.: Maria Silva"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+                  <input
+                    value={newCpf}
+                    onChange={(e) => setNewCpf(e.target.value)}
+                    placeholder="Somente números"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+                  <input
+                    value={newContact}
+                    onChange={(e) => setNewContact(e.target.value)}
+                    placeholder="Ex.: (48) 99999-9999"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddStudent}
+                  disabled={adding || newName.trim().length < 2}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {adding ? "Adicionando..." : "Salvar aluno"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de presença */}
+          <div className="rounded-2xl overflow-hidden border">
+            <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+              <div className="font-semibold">Lista de presença</div>
+              <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+            </div>
+
+            <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+              <div className="px-1.5 py-2 text-center">#</div>
+              <div className="px-3 py-2">Aluno</div>
+              <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto">
+              {students.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+              ) : students.map((s, idx) => {
+                const isEven = idx % 2 === 0;
+                return (
+                  <div
+                    key={s.id}
+                    className={[
+                      "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+                      "border-b border-blue-100",
+                      isEven ? "bg-blue-50/40" : "bg-white"
+                    ].join(" ")}
+                  >
+                    <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+                    <div className="px-3 py-2">
+                      <div
+                        className="font-medium text-gray-900 cursor-pointer select-none"
+                        onDoubleClick={() => onDblClickStudent(s)}
+                        title="Duplo clique para editar"
+                      >
+                        {s.name}
+                      </div>
+                    </div>
+                    <div className="px-1.5 py-2 text-center">
+                      <label className="inline-flex items-center">
+                        <span className="sr-only">Presença de {s.name}</span>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-blue-600"
+                          checked={!!presence[s.id]}
+                          onChange={() => toggleStudent(s.id)}
+                          aria-label={`Presença de ${s.name}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Barra de ações — abaixo da lista */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar alterações"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowAdd((s) => !s)}
+              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+            >
+              Adicionar aluno
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+            >
+              {deleting ? "Excluindo..." : "Excluir chamada"}
+            </button>
+          </div>
+
+          {/* Importação (CSV/XLSX) */}
+          <div className="rounded-2xl border">
+            <div className="border-b px-4 py-3">
+              <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+              <p className="text-xs text-gray-600 mt-1">
+                <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+              </p>
+            </div>
+
+            <div className="grid gap-3 px-4 py-4">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+                <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+                <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <input
+                    type="file"
+                    accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    id="students-file-input"
+                    ref={fileRef}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setUploadName(f ? f.name : null);
+                      setUploadFile(f);
+                    }}
+                  />
+                  <label
+                    htmlFor="students-file-input"
+                    className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+                  >
+                    Escolher arquivo
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={__handleImportSend}
+                    disabled={!uploadFile || importing}
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {importing ? "Enviando..." : "Enviar planilha"}
+                  </button>
+                </div>
+
+                {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+                    Baixar modelo CSV
+                  </a>
+                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+                    Baixar modelo XLSX
+                  </a></div>
+              </div>
+            </div>
+          </div>
+        </div>{/* /px-5 py-5 */}
+      </section>
+
+      {/* MODAL editar aluno */}
+      {editId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
+            <div className="mt-3 grid gap-2">
+              <label className="text-xs font-medium text-gray-700">Nome</label>
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                placeholder="Nome do aluno"
+              />
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleEditSave}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Salvar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setEditId(null); setEditName(""); }}
+                className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleEditDelete}
+                className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+              >
+                Excluir aluno
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/chamadas/ui.tsx =====
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+type Item = { id: string; seq: number; title: string; createdAt: string };
+type Order = "asc" | "desc";
+
+export default function ChamadasClient({ classId }: { classId: string }) {
+  const router = useRouter();
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState<Order>("desc");
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/classes/${classId}/chamadas?order=${order}`, { cache: "no-store" });
+    if (!res.ok) { setError("Falha ao carregar chamadas"); setLoading(false); return; }
+    const data = await res.json();
+    setItems(data?.attendances ?? []);
+    setLoading(false);
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [order, classId]);
+
+  const sorted = useMemo(() => [...items].sort((a,b)=> order==="asc"? a.seq-b.seq : b.seq-a.seq), [items, order]);
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => router.push(`/classes/${classId}/chamadas/new`)}
+          className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow transition"
+        >
+          ➕ Nova chamada
+        </button>
+        <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur">
+          <span className="opacity-90">Ordenar por ID:</span>
+          <button onClick={()=>setOrder("asc")} className={`rounded-xl px-3 py-1 ${order==="asc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Crescente</button>
+          <button onClick={()=>setOrder("desc")} className={`rounded-xl px-3 py-1 ${order==="desc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Decrescente</button>
+        </div>
+      </div>
+
+      <div className="mt-5 bg-white/5 rounded-2xl p-1">
+        {loading ? (
+          <div className="p-6 text-white/90">Carregando chamadas...</div>
+        ) : error ? (
+          <div className="p-6 text-red-100">{error}</div>
+        ) : sorted.length === 0 ? (
+          <div className="p-6 text-white/90">Nenhuma chamada ainda. Crie a primeira.</div>
+        ) : (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-2">
+            {sorted.map((it) => (
+              <li key={it.id}>
+                <button
+                  className="w-full text-left rounded-xl bg-white px-4 py-3 shadow-sm hover:shadow transition border border-white/70"
+                  onClick={() => router.push(`/classes/${classId}/chamadas/${it.seq}`)}
+                >
+                  <div className="text-sm text-[var(--color-brand-blue)] font-semibold">ID #{it.seq}</div>
+                  <div className="font-medium">{it.title}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/import/page.tsx =====
+import ImportClient from "./ui";
+
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <ImportClient id={id} />;
+}
+
+
+===== app/classes/[id]/conteudos/import/ui.tsx =====
+"use client";
+import Link from "next/link";
+import { useRef, useState } from "react";
+
+export default function ImportClient({ id }: { id: string }) {
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleSend() {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      // Rota esperada no backend:
+      // POST /api/classes/[id]/conteudos/import -> cria conteúdos e retorna { ok, count }
+      const res = await fetch(`/api/classes/${id}/conteudos/import`, { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+      alert(`Importação concluída: ${data.count || 0} conteúdos criados.`);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro ao importar");
+    } finally {
+      setImporting(false);
+      setFile(null);
+      setFileName(null);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <div className="flex items-center justify-between mb-4">
+        <Link href={`/classes/${id}/conteudos`} className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600">
+          Voltar
+        </Link>
+      </div>
+
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <h1 className="text-lg font-semibold text-gray-900">Importar conteúdos por planilha</h1>
+        <p className="text-sm text-gray-600 mb-4">
+          Aceita <b>.csv</b> ou <b>.xlsx</b> com colunas: <code>title</code> (obrigatório) e <code>description</code> (opcional).
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="hidden"
+            id="contents-file-input"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              setFileName(f ? f.name : null);
+              setFile(f);
+            }}
+          />
+          <label
+            htmlFor="contents-file-input"
+            className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+          >
+            Escolher arquivo
+          </label>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!file || importing}
+            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {importing ? "Enviando..." : "Importar planilha"}
+          </button>
+          {fileName && <span className="text-sm text-gray-700">Selecionado: {fileName}</span>}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2 text-sm">
+          <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">
+            Baixar modelo CSV
+          </a>
+          <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">
+            Baixar modelo XLSX
+          </a>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/List.tsx =====
+"use client";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
+type Content = {
+  seq: number;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+};
+
+export default function ConteudosList({ classId }: { classId: string }) {
+  const [items, setItems] = useState<Content[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/classes/${classId}/conteudos`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data)) throw new Error("Falha ao carregar conteúdos");
+      setItems(data);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro ao carregar conteúdos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, [classId]);
+
+  if (loading) {
+    return (
+      <section className="mt-6">
+        <div className="rounded-2xl border bg-white p-6 shadow-sm text-sm text-gray-600">Carregando…</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-6">
+      {items.length === 0 ? (
+        <div className="rounded-2xl border bg-white p-8 shadow-sm text-center text-gray-700">
+          Nenhum conteúdo ainda. Use “Importar conteúdos por planilha”.
+        </div>
+      ) : (
+        <ul className="divide-y divide-gray-100 rounded-2xl border bg-white">
+          {items.map((c, idx) => (
+            <li key={c.seq} className={idx % 2 ? "bg-blue-50/40" : "bg-white"}>
+              <Link
+                href={`/classes/${classId}/conteudos/${c.seq}`}
+                className="group flex items-center justify-between px-4 py-4 hover:bg-blue-50"
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="rounded-xl bg-[#0A66FF]/10 px-3 py-1.5 text-xs font-medium text-[#0A66FF]">
+                    {c.seq}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900">
+                      {c.title || `Conteúdo ${c.seq}`}
+                    </p>
+                    {c.description && (
+                      <p className="truncate text-xs text-gray-600">{c.description}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ms-4 shrink-0 rounded-full bg-[#0A66FF]/10 p-2 text-[#0A66FF] transition group-hover:bg-[#0A66FF]/20">
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+                    <path fill="currentColor" d="M9 6l6 6l-6 6"/>
+                  </svg>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/new/page.tsx =====
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  return (
+    <main className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">Adicionar conteúdo</h1>
+        <a
+          href={`/classes/${id}/conteudos`}
+          className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+        >
+          Voltar
+        </a>
+      </div>
+
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <form
+          onSubmit={(e) => { e.preventDefault(); alert("Salvar conteúdo: implementar POST /api/classes/[id]/conteudos"); }}
+          className="grid gap-4"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Aula (nº)</label>
+              <input name="lesson" type="number" min={1} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Ex.: 1" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">Título <span className="text-red-600">*</span></label>
+              <input name="title" required className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Ex.: Robótica de introdução" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Conteúdo da Aula <span className="text-red-600">*</span></label>
+            <textarea name="content" required rows={3} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="O que será abordado…"></textarea>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Objetivos</label>
+            <textarea name="goals" rows={3} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="- Identificar…&#10;- Compreender…"></textarea>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Desenvolvimento das Atividades</label>
+            <textarea name="activities" rows={4} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Passo a passo/roteiro da aula…"></textarea>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Recursos Didáticos</label>
+              <input name="resources" className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Kit robótico, notebook, projetor…" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">BNCC</label>
+              <input name="bncc" className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="EF02TE01; EF05CI06" />
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <button type="submit" className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90">
+              Salvar conteúdo
+            </button>
+            <a href={`/classes/${id}/conteudos`} className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700">
+              Cancelar
+            </a>
+          </div>
+        </form>
+      </div>
+
+      <div className="mt-6 rounded-2xl border bg-white p-6">
+        <p className="text-sm text-gray-600">
+          Também é possível <a className="text-[#0A66FF] underline" href={`/classes/${id}/conteudos/import`}>importar conteúdos por planilha</a>.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">Baixar modelo CSV</a>
+          <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">Baixar modelo XLSX</a>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/new/ui.tsx =====
+"use client";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+export default function NewClient({ id }: { id: string }) {
+  const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!title.trim()) {
+      alert("Informe o nome da aula");
+      return;
+    }
+    setSaving(true);
+    try {
+      // 1) Gera imagem via IA
+      const gen = await fetch(`/api/images/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: title.trim() })
+      });
+      const genData = await gen.json().catch(() => ({}));
+      if (!gen.ok || !genData?.url) throw new Error(genData?.error || "Falha ao gerar imagem");
+
+      // 2) Cria o conteúdo
+      const res = await fetch(`/api/classes/${id}/conteudos`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim().length ? description.trim() : undefined,
+          imageUrl: genData.url
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Erro ao criar conteúdo");
+
+      router.replace(`/classes/${id}/conteudos`);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("conteudo:created"));
+      }
+    } catch (e: any) {
+      alert(e?.message || "Erro ao publicar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <div className="flex items-center justify-between mb-4">
+        <Link href={`/classes/${id}/conteudos`} className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600">
+          Voltar
+        </Link>
+      </div>
+
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <h1 className="text-lg font-semibold text-gray-900">Novo conteúdo (imagem por IA)</h1>
+        <p className="text-sm text-gray-600 mb-4">Somente imagens geradas automaticamente com base no nome da aula.</p>
+
+        <div className="grid gap-3">
+          <input
+            className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0A66FF]"
+            placeholder="Nome da aula (obrigatório)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <textarea
+            className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0A66FF]"
+            placeholder="Descrição / objetivo (opcional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+          />
+
+          <div>
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={saving || !title.trim()}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+            >
+              {saving ? "Publicando..." : "Publicar com IA"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/page.tsx =====
+"use client";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+
+type Item = { id: string; seq: number; title: string };
+
+export default function ConteudosPage() {
+  const { id } = useParams<{ id: string }>();
+  const [list, setList] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string|null>(null);
+
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [objetivos, setObjetivos] = useState("");
+  const [desenvolvimento, setDesenvolvimento] = useState("");
+  const [recursos, setRecursos] = useState("");
+  const [bncc, setBncc] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fileRef = useRef<HTMLInputElement|null>(null);
+  const [fname, setFname] = useState<string|null>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function load() {
+    if (!id) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/classes/${id}/conteudos`, { cache: "no-store" });
+      const data = await res.json().catch(()=> ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao carregar");
+      setList(data.list || []);
+    } catch (e:any) {
+      setErr(e?.message || "Erro ao carregar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(()=> { load(); }, [id]);
+
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) { alert("Nome da aula é obrigatório."); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/classes/${id}/conteudos`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), objetivos, desenvolvimento, recursos, bncc })
+      });
+      const data = await res.json().catch(()=> ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao salvar");
+      setOpen(false);
+      setTitle(""); setObjetivos(""); setDesenvolvimento(""); setRecursos(""); setBncc("");
+      await load();
+    } catch (e:any) {
+      alert(e?.message || "Erro ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onImport() {
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/classes/${id}/conteudos/import`, { method: "POST", body: fd });
+      const data = await res.json().catch(()=> ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+      await load();
+      if (fileRef.current) fileRef.current.value = "";
+      setFname(null);
+      alert(`Importação concluída: criados ${data.created ?? 0}, atualizados ${data.updated ?? 0}.`);
+    } catch(e:any) {
+      alert(e?.message || "Erro ao importar");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mb-6 rounded-2xl border bg-white p-5 sm:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <Link href={`/classes/${id}`} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">Voltar</Link>
+        </div>
+        <h1 className="text-2xl font-semibold">Conteúdos — <span className="text-[#0A66FF]">Turma</span></h1>
+        <p className="mt-1 text-sm text-gray-600">Gerencie os conteúdos desta turma.</p>
+
+        <div className="mt-4">
+          <button onClick={()=> setOpen(true)} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
+            + Adicionar conteúdo
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-white">
+        {loading ? (
+          <p className="p-4 text-sm text-gray-600">Carregando…</p>
+        ) : err ? (
+          <p className="p-4 text-sm text-red-600">{err}</p>
+        ) : list.length === 0 ? (
+          <div className="p-4 text-sm text-gray-700">
+            Nenhum conteúdo ainda. Clique em <b>Adicionar conteúdo</b> ou importe por planilha abaixo.
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {list.map((it)=> (
+              <li key={it.id} className="flex items-center justify-between p-4">
+                <div className="text-sm">
+                  <div className="font-medium">{it.seq} — {it.title}</div>
+                </div>
+                {/* ✅ agora aponta para /conteudos/[seq] */}
+                <Link
+                  href={`/classes/${id}/conteudos/${it.seq}`}
+                  className="rounded-full border px-3 py-1 text-sm hover:border-blue-400 hover:text-blue-700"
+                >
+                  Abrir
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <section className="mt-6 rounded-2xl border bg-white p-5 sm:p-6">
+        <h2 className="text-base font-semibold">Enviar conteúdo por planilha</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Suporte a CSV (pronto) e XLSX (preparado). Campos: <b>nome da aula (obrigatório)</b>,
+          objetivos, desenvolvimento das atividades, recursos pedagógicos e BNCC.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.xlsx"
+            id="conteudos-file"
+            className="hidden"
+            onChange={(e)=> setFname(e.target.files?.[0]?.name ?? null)}
+          />
+          <label htmlFor="conteudos-file" className="cursor-pointer rounded-xl border px-3 py-2 text-sm hover:border-blue-500 hover:text-blue-600">
+            Escolher arquivo (CSV/XLSX)
+          </label>
+          <button
+            onClick={onImport}
+            disabled={importing || !fname}
+            className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {importing ? "Enviando..." : "Enviar planilha"}
+          </button>
+          {fname && <span className="text-xs text-gray-700">Selecionado: {fname}</span>}
+          <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/conteudos.csv" target="_blank" rel="noreferrer">
+            Baixar modelo CSV
+          </a>
+          <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/conteudos.xlsx" target="_blank" rel="noreferrer">
+            Baixar modelo XLSX
+          </a>
+        </div>
+      </section>
+
+      {/* Modal - igual à versão anterior */}
+      {open && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-5 sm:p-6 shadow-lg">
+            <h3 className="text-lg font-semibold">Novo conteúdo</h3>
+            <p className="text-xs text-gray-500 mb-3">Somente <b>Nome da aula</b> é obrigatório.</p>
+            <form onSubmit={onSave} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm">Nome da aula *</label>
+                <input className="input" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Ex.: Algoritmos — Aula 1" required />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm">Objetivos</label>
+                <textarea className="input min-h-[72px]" value={objetivos} onChange={(e)=>setObjetivos(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm">Desenvolvimento das atividades</label>
+                <textarea className="input min-h-[72px]" value={desenvolvimento} onChange={(e)=>setDesenvolvimento(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm">Recursos pedagógicos</label>
+                <textarea className="input min-h-[72px]" value={recursos} onChange={(e)=>setRecursos(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm">BNCC</label>
+                <input className="input" value={bncc} onChange={(e)=>setBncc(e.target.value)} placeholder="Ex.: EF06MA01" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={()=> setOpen(false)} className="rounded-xl border px-3 py-2 text-sm">Cancelar</button>
+                <button type="submit" disabled={saving} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white disabled:opacity-60">
+                  {saving ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/[seq]/page.tsx =====
+"use client";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+type Content = {
+  id: string; seq: number; title: string; bodyHtml?: string;
+  objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string;
+};
+
+// Componente de campo editável com overlay que captura double-click
+function EditableField({
+  label, value, setValue, multiline = false, editing, setEditing, placeholder
+}: {
+  label: string;
+  value: string;
+  setValue: (v: string) => void;
+  multiline?: boolean;
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative">
+      <label className="mb-1 block text-sm text-gray-600">{label}</label>
+      {multiline ? (
+        <textarea
+          className={`input min-h-[96px] ${editing ? "" : "opacity-70"}`}
+          value={value}
+          onChange={(e)=> setValue(e.target.value)}
+          disabled={!editing}
+          placeholder={placeholder}
+        />
+      ) : (
+        <input
+          className={`input ${editing ? "" : "opacity-70"}`}
+          value={value}
+          onChange={(e)=> setValue(e.target.value)}
+          disabled={!editing}
+          placeholder={placeholder}
+        />
+      )}
+      {/* Overlay: quando não está editando, captura o double-click */}
+      {!editing && (
+        <button
+          type="button"
+          aria-label={`Editar ${label}`}
+          title="Dê dois cliques para editar"
+          onDoubleClick={()=> setEditing(true)}
+          className="absolute inset-0 cursor-text"
+          // botão invisível
+          style={{ background: "transparent" }}
+        />
+      )}
+      {!editing && <p className="mt-1 text-xs text-gray-500">Dê dois cliques para editar</p>}
+    </div>
+  );
+}
+
+export default function ConteudoDetailPage() {
+  const { id, seq } = useParams<{ id: string; seq: string }>();
+  const router = useRouter();
+  const [data, setData] = useState<Content | null>(null);
+  const [err, setErr] = useState<string|null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // flags de edição (double-click liga)
+  const [edit, setEdit] = useState<{title:boolean; objetivos:boolean; desenvolvimento:boolean; recursos:boolean; bncc:boolean}>({
+    title: false, objetivos: false, desenvolvimento: false, recursos: false, bncc: false
+  });
+
+  // valores
+  const [title, setTitle] = useState("");
+  const [objetivos, setObjetivos] = useState("");
+  const [desenvolvimento, setDesenvolvimento] = useState("");
+  const [recursos, setRecursos] = useState("");
+  const [bncc, setBncc] = useState("");
+
+  function loadLocal(j: Content) {
+    setData(j);
+    setTitle(j.title || "");
+    setObjetivos(j.objetivos || "");
+    setDesenvolvimento(j.desenvolvimento || "");
+    setRecursos(j.recursos || "");
+    setBncc(j.bncc || "");
+  }
+
+  useEffect(() => {
+    async function run() {
+      try {
+        const res = await fetch(`/api/classes/${id}/conteudos/${seq}`, { cache: "no-store" });
+        const j = await res.json().catch(()=> ({}));
+        if (!res.ok || !j?.ok) throw new Error(j?.error || "Não encontrado");
+        loadLocal(j.content);
+      } catch(e:any) {
+        setErr(e?.message || "Erro ao carregar conteúdo");
+      }
+    }
+    if (id && seq) run();
+  }, [id, seq]);
+
+  async function onSave() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/classes/${id}/conteudos/${seq}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, objetivos, desenvolvimento, recursos, bncc })
+      });
+      const j = await res.json().catch(()=> ({}));
+      if (!res.ok || !j?.ok) throw new Error(j?.error || "Falha ao salvar");
+      loadLocal(j.content);
+      setEdit({ title:false, objetivos:false, desenvolvimento:false, recursos:false, bncc:false });
+      alert("Conteúdo atualizado.");
+    } catch(e:any) {
+      alert(e?.message || "Erro ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDelete() {
+    if (!confirm("Tem certeza que deseja excluir este conteúdo?")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/classes/${id}/conteudos/${seq}`, { method: "DELETE" });
+      const j = await res.json().catch(()=> ({}));
+      if (!res.ok || !j?.ok) throw new Error(j?.error || "Falha ao excluir");
+      router.push(`/classes/${id}/conteudos`);
+    } catch(e:any) {
+      alert(e?.message || "Erro ao excluir");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <div className="mb-6 flex items-center justify-between">
+        <Link href={`/classes/${id}/conteudos`} className="rounded-xl border px-3 py-2 text-sm hover:border-blue-400 hover:text-blue-700">
+          Voltar
+        </Link>
+        {data && <div className="text-sm text-gray-500">Aula {data.seq}</div>}
+      </div>
+
+      {err ? (
+        <p className="text-sm text-red-600">{err}</p>
+      ) : !data ? (
+        <p className="text-sm text-gray-600">Carregando…</p>
+      ) : (
+        <section className="space-y-4 rounded-2xl border bg-white p-6">
+          <EditableField
+            label="Nome da aula"
+            value={title}
+            setValue={setTitle}
+            editing={edit.title}
+            setEditing={(v)=> setEdit(s=> ({...s, title:v}))}
+            placeholder="Ex.: Algoritmos — Aula 1"
+          />
+          <EditableField
+            label="Objetivos"
+            value={objetivos}
+            setValue={setObjetivos}
+            editing={edit.objetivos}
+            setEditing={(v)=> setEdit(s=> ({...s, objetivos:v}))}
+            multiline
+          />
+          <EditableField
+            label="Desenvolvimento das atividades"
+            value={desenvolvimento}
+            setValue={setDesenvolvimento}
+            editing={edit.desenvolvimento}
+            setEditing={(v)=> setEdit(s=> ({...s, desenvolvimento:v}))}
+            multiline
+          />
+          <EditableField
+            label="Recursos pedagógicos"
+            value={recursos}
+            setValue={setRecursos}
+            editing={edit.recursos}
+            setEditing={(v)=> setEdit(s=> ({...s, recursos:v}))}
+            multiline
+          />
+          <EditableField
+            label="BNCC"
+            value={bncc}
+            setValue={setBncc}
+            editing={edit.bncc}
+            setEditing={(v)=> setEdit(s=> ({...s, bncc:v}))}
+            placeholder="Ex.: EF06MA01"
+          />
+
+          <div className="flex items-center justify-between pt-2">
+            <button
+              onClick={onDelete}
+              disabled={deleting}
+              className="rounded-xl border px-4 py-2 text-red-600 border-red-600 hover:bg-red-50 disabled:opacity-60"
+            >
+              Excluir
+            </button>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white disabled:opacity-60"
+            >
+              Salvar
+            </button>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/conteudos/ui.tsx =====
+"use client";
+
+import { useRef, useState } from "react";
+
+export function ImportContentsBox({ classId }: { classId: string }) {
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadName, setUploadName] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleImportSend() {
+    if (!uploadFile) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      const res = await fetch(`/api/classes/${classId}/conteudos/import`, {
+        method: "POST",
+        body: fd,
+      });
+
+      let errorMsg = "Erro ao importar conteúdos";
+      let data: any = null;
+      try { data = await res.json(); } catch {}
+      if (!res.ok || !data?.ok) {
+        if (data?.error) {
+          if (typeof data.error === "string") errorMsg = data.error;
+          else if (data.error?.formErrors?.formErrors?.length) errorMsg = data.error.formErrors.formErrors.join("\n");
+          else if (data.error?.fieldErrors) errorMsg = JSON.stringify(data.error.fieldErrors);
+        }
+        throw new Error(errorMsg);
+      }
+
+      // sucesso: recarrega a lista
+      setUploadFile(null);
+      setUploadName(null);
+      if (fileRef.current) fileRef.current.value = "";
+      window.location.reload();
+    } catch (e: any) {
+      alert(e?.message || "Erro ao importar conteúdos");
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <section className="mt-8 rounded-2xl border bg-white">
+      <div className="border-b px-5 py-5">
+        <h3 className="text-sm font-semibold text-gray-900">Importar conteúdos por planilha</h3>
+        <p className="mt-1 text-xs text-gray-600">
+          Formatos aceitos: <b>.csv</b>, <b>.xlsx</b>. Mantenha o cabeçalho: <b>Aula, Título, Conteúdo da Aula, Objetivos, Desenvolvimento das Atividades, Recursos Didáticos, BNCC</b>.
+        </p>
+      </div>
+
+      <div className="px-5 py-5">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+          <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+          <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              id="contents-file-input"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setUploadName(f ? f.name : null);
+                setUploadFile(f);
+              }}
+            />
+            <label
+              htmlFor="contents-file-input"
+              className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+            >
+              Escolher arquivo
+            </label>
+
+            <button
+              type="button"
+              onClick={handleImportSend}
+              disabled={!uploadFile || importing}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {importing ? "Enviando..." : "Enviar planilha"}
+            </button>
+          </div>
+
+          {uploadName && (
+            <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+            <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">
+              Baixar modelo CSV
+            </a>
+            <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">
+              Baixar modelo XLSX
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+===== app/classes/[id]/page.tsx =====
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const cls = await prisma.class.findFirst({
+    where: { id },
+    select: { id: true, name: true }
+  });
+  if (!cls) return notFound();
+
+  return (
+    <main className="min-h-screen">
+      {/* Cabeçalho */}
+      <section className="bg-gradient-to-br from-[#0A66FF]/90 to-[#0A66FF] text-white">
+        <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between gap-3">
+          <Link
+            href={`/dashboard`}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/60"
+          >
+            Voltar
+          </Link>
+
+          <div className="text-right">
+            <h1 className="text-xl font-semibold">
+              Turma — <span className="opacity-95">{cls.name}</span>
+            </h1>
+            <p className="mt-1 text-sm opacity-90">Gerencie a turma acessando Chamadas e Conteúdos.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Corpo (sem links superiores redundantes) */}
+      <section className="max-w-5xl mx-auto px-6 py-8">
+        <div className="rounded-2xl border bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold mb-2 text-gray-900">Ações</h2>
+          <p className="text-gray-600 mb-4">Use os atalhos abaixo para gerenciar a turma.</p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/classes/${cls.id}/chamadas`}
+              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90"
+            >
+              Ir para Chamadas
+            </Link>
+            <Link
+              href={`/classes/${cls.id}/conteudos`}
+              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+            >
+              Ver Conteúdos
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+
+===== app/classes/[id]/StudentsPanel.tsx =====
+"use client";
+import { useEffect, useRef, useState } from "react";
+
+type Student = { id: string; name: string; cpf: string; contact: string };
+
+export default function StudentsPanel({ classId }: { classId: string }) {
+  const [openAdd, setOpenAdd] = useState(false);
+  const [form, setForm] = useState({ name: "", cpf: "", contact: "" });
+  const [saving, setSaving] = useState(false);
+  const [list, setList] = useState<Student[] | null>(null);
+  const fileRef = useRef<HTMLInputElement|null>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function load() {
+    const res = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.ok) setList(data.students as Student[]);
+    else setList([]);
+  }
+  useEffect(() => { load(); }, [classId]);
+
+  async function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/classes/${classId}/students`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form)
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        alert(data?.error ?? "Erro ao adicionar");
+      } else {
+        setList(prev => prev ? [data.student as Student, ...prev] : [data.student as Student]);
+        setOpenAdd(false);
+        setForm({ name: "", cpf: "", contact: "" });
+      }
+    } catch {
+      alert("Falha de rede");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        alert(data?.error ?? "Erro ao importar");
+      } else {
+        setList(prev => prev ? [...data.students, ...prev] : data.students);
+        alert(`Importados: ${data.createdCount}`);
+      }
+    } catch {
+      alert("Falha de rede");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <section className="card p-6 mt-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Alunos</h2>
+        <div className="flex gap-2">
+          <button onClick={() => setOpenAdd(true)} className="btn-primary">Adicionar aluno</button>
+          <label className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+            {importing ? "Importando..." : "Importar CSV/XLSX"}
+            <input ref={fileRef} onChange={onImport} type="file" accept=".csv,.xlsx" className="hidden" />
+          </label>
+          <a className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" href="/templates/students.csv" target="_blank">Modelo CSV</a>
+          <a className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" href="/templates/students.xlsx" target="_blank">Modelo XLSX</a>
+        </div>
+      </div>
+
+      {/* Lista */}
+      <div className="mt-4">
+        {list === null ? (
+          <div className="text-gray-600">Carregando...</div>
+        ) : list.length === 0 ? (
+          <div className="text-gray-600">Nenhum aluno cadastrado.</div>
+        ) : (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {list.map(s => (
+              <li key={s.id} className="rounded-xl border p-4 bg-gradient-to-br from-[var(--color-brand-blue)]/10 to-[var(--color-brand-blue)]/5">
+                <div className="font-medium">{s.name}</div>
+                <div className="text-xs text-gray-600 mt-1">CPF: {s.cpf || "-"}</div>
+                <div className="text-xs text-gray-600">Contato: {s.contact || "-"}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Drawer de adicionar */}
+      {openAdd && (
+        <div className="mt-6 rounded-2xl border p-4">
+          <h3 className="font-semibold mb-3">Adicionar aluno</h3>
+          <form onSubmit={onAdd} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-sm mb-1">Nome</label>
+              <input className="input w-full" required
+                     value={form.name}
+                     onChange={e=>setForm(f=>({...f, name:e.target.value}))} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1">CPF</label>
+              <input className="input w-full"
+                     value={form.cpf}
+                     onChange={e=>setForm(f=>({...f, cpf:e.target.value}))}
+                     placeholder="000.000.000-00" />
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Contato</label>
+              <input className="input w-full"
+                     value={form.contact}
+                     onChange={e=>setForm(f=>({...f, contact:e.target.value}))}
+                     placeholder="(11) 90000-0000" />
+            </div>
+            <div className="sm:col-span-2 flex gap-2">
+              <button type="submit" disabled={saving} className="btn-primary">
+                {saving ? "Salvando..." : "Salvar"}
+              </button>
+              <button type="button" onClick={()=>setOpenAdd(false)} className="rounded-xl px-3 py-2 text-sm border">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+===== app/dashboard/page.tsx =====
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
+type ClassItem = { id: string; name: string; createdAt: string };
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [me, setMe] = useState<Me | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [name, setName] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function fetchMe() {
+    const res = await fetch("/api/auth/me");
+    if (res.status === 401) {
+      router.push("/login");
+      return;
+    }
+    const data: Me = await res.json();
+    setMe(data);
+  }
+
+  async function fetchClasses() {
+    const res = await fetch("/api/classes");
+    if (res.status === 401) {
+      router.push("/login");
+      return;
+    }
+    const data = await res.json();
+    if (data?.ok) setClasses(data.classes || []);
+  }
+
+  useEffect(() => {
+    (async () => {
+      await fetchMe();
+      await fetchClasses();
+      setLoading(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function onLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
+
+  async function onCreateClass(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const n = name.trim();
+    if (n.length < 2) {
+      setErr("Nome da turma muito curto.");
+      return;
+    }
+    const res = await fetch("/api/classes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: n })
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.ok) {
+      setErr(data?.error ?? "Erro ao criar turma");
+      return;
+    }
+    setName("");
+    // recarrega lista
+    await fetchClasses();
+  }
+
+  if (loading) {
+    return <main className="min-h-screen flex items-center justify-center">Carregando...</main>;
+  }
+
+  const firstName = me?.user?.name?.split(" ")[0] || "Olá";
+
+  return (
+    <main className="min-h-screen p-6 lg:p-10">
+      <header className="flex items-center justify-between max-w-5xl mx-auto mb-8">
+        <div className="flex items-center gap-3">
+          <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+          <h1 className="text-2xl font-semibold">EDUCC • Dashboard</h1>
+        </div>
+        <button onClick={onLogout} className="btn-primary">Sair</button>
+      </header>
+
+      <section className="max-w-5xl mx-auto">
+        <div className="card p-6 mb-8">
+          <h2 className="text-xl font-semibold">{firstName}, bem-vindo(a)!</h2>
+          <p className="text-gray-600">Gerencie suas turmas abaixo.</p>
+        </div>
+
+        <div className="card p-6 mb-6">
+          <h3 className="font-semibold mb-3">Criar nova turma</h3>
+          <form onSubmit={onCreateClass} className="flex flex-col sm:flex-row gap-3">
+            <input
+              className="input flex-1"
+              type="text"
+              placeholder="Nome da turma"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={2}
+            />
+            <button type="submit" className="btn-primary">Criar turma</button>
+          </form>
+          {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
+        </div>
+
+        <div className="card p-6">
+          <h3 className="font-semibold mb-4">Minhas turmas</h3>
+          {classes.length === 0 ? (
+            <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
+          ) : (
+            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {classes.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/classes/${c.id}`}
+                    className="block p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
+                  >
+                    <div className="font-medium">{c.name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(c.createdAt).toLocaleString()}
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+
+===== app/globals.css =====
+@import "tailwindcss";
+
+@theme {
+  --color-brand-blue: #0A66FF;
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
+  --radius-xl: 0.75rem;
+}
+
+:root { color-scheme: light; }
+html, body { height: 100%; }
+
+.btn-primary {
+  @apply px-6 py-3 font-semibold text-white disabled:opacity-50;
+  background-color: var(--color-brand-blue);
+  border-radius: var(--radius-xl);
+}
+.input {
+  @apply w-full border border-gray-200 px-4 py-3 outline-none focus:ring-2;
+  border-radius: var(--radius-xl);
+  --tw-ring-color: color-mix(in oklab, var(--color-brand-blue) 40%, transparent);
+}
+.card {
+  @apply bg-white border border-gray-100;
+  border-radius: calc(var(--radius-xl) * 1.333);
+  box-shadow: var(--shadow-card);
+}
+
+
+===== app/layout.tsx =====
+import "./globals.css";
+export { metadata, viewport } from "./metadata";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR"><head><link rel="manifest" href="/manifest.webmanifest" /></head><body>{children}</body>
+    </html>
+  );
+}
+
+
+===== app/metadata.ts =====
+import type { Metadata, Viewport } from "next";
+
+export const metadata: Metadata = {
+  title: "EDUCC",
+  description: "App EDUCC",
+  applicationName: "EDUCC",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192" }],
+    apple: "/apple-touch-icon.png"
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "EDUCC"
+  }
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0A66FF"
+};
+
+
+===== app/offline/page.tsx =====
+export const metadata = { title: "Offline • EDUCC" };
+
+export default function Offline() {
+  return (
+    <main className="min-h-screen flex items-center justify-center p-8 text-center">
+      <div>
+        <h1 className="text-2xl font-semibold">Você está offline</h1>
+        <p className="text-gray-600 mt-2">Alguns recursos podem não estar disponíveis sem conexão.</p>
+      </div>
+    </main>
+  );
+}
+
+
+===== app/page.tsx =====
+import LoginCard from "@/components/LoginCard";
+
+export default function Home() {
+  return (
+    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+      {/* Hero azul (desktop) */}
+      <section className="hidden lg:flex items-center justify-center bg-brand-blue text-white">
+        <div className="max-w-xl px-8">
+          <h2 className="text-4xl font-extrabold leading-tight">
+            Bem-vindo(a) ao <br /> EDUCC
+          </h2>
+          <p className="mt-4 text-white/90">
+            Sua plataforma educacional — instalável como app (PWA) em Web, Android e iOS.
+          </p>
+        </div>
+      </section>
+
+      {/* Coluna do formulário */}
+      <section className="flex items-center justify-center p-6 lg:p-12">
+        <LoginCard />
+      </section>
+    </main>
+  );
+}

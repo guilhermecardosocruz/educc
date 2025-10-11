@@ -1,0 +1,16 @@
+app/(auth)/login/page.tsx
+app/(auth)/recover-email/page.tsx
+app/(auth)/recover/page.tsx
+app/(auth)/register/page.tsx
+app/classes/[id]/chamadas/new/page.tsx
+app/classes/[id]/chamadas/page.tsx
+app/classes/[id]/chamadas/[seq]/page.tsx
+app/classes/[id]/conteudos/import/page.tsx
+app/classes/[id]/conteudos/new/page.tsx
+app/classes/[id]/conteudos/page.tsx
+app/classes/[id]/conteudos/[seq]/page.tsx
+app/classes/[id]/page.tsx
+app/dashboard/page.tsx
+app/layout.tsx
+app/offline/page.tsx
+app/page.tsx

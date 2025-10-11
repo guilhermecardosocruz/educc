@@ -8,3 +8,9 @@
 
 /* Utilitário de sombra suave para cards */
 .shadow-soft { box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.08); }
+
+/* iOS safe-area (PWA standalone) */
+body{
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
