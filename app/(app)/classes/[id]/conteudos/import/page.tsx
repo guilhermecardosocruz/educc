@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import ImportClient from "./ui";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
