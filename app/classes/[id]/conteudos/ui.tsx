@@ -62,7 +62,7 @@ export function ImportContentsBox({ classId }: { classId: string }) {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
               className="hidden"
               id="contents-file-input"
               onChange={(e) => {
