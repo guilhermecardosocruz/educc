@@ -1,0 +1,17 @@
+app/api/auth/login/route.ts
+app/api/auth/logout/route.ts
+app/api/auth/me/route.ts
+app/api/auth/recover-email/route.ts
+app/api/auth/register/route.ts
+app/api/classes/[id]/chamadas/route.ts
+app/api/classes/[id]/chamadas/[seq]/presences/route.ts
+app/api/classes/[id]/chamadas/[seq]/route.ts
+app/api/classes/[id]/conteudos/import/route.ts
+app/api/classes/[id]/conteudos/route.ts
+app/api/classes/[id]/conteudos/[seq]/route.ts
+app/api/classes/[id]/route.ts
+app/api/classes/[id]/students/import/route.ts
+app/api/classes/[id]/students/route.ts
+app/api/classes/[id]/students/[studentId]/route.ts
+app/api/classes/route.ts
+app/api/images/generate/route.ts

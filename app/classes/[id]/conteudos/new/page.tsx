@@ -1,3 +1,5 @@
+import ImportStudentsClient from "./ImportStudentsClient";
+
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
@@ -75,6 +77,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">Baixar modelo XLSX</a>
         </div>
       </div>
+
+      {/* Bloco adicional: importar ALUNOS por planilha (CSV/XLSX) a partir desta tela */}
+      <ImportStudentsClient id={id} />
     </main>
   );
 }

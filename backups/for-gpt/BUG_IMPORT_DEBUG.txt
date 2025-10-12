@@ -1,0 +1,427 @@
+############################ DEBUG IMPORT ############################
+PWD: /home/guilherme/educc
+
+==== 1) TELA ====
+----- BEGIN app/classes/[id]/conteudos/new/page.tsx
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  return (
+    <main className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">Adicionar conteúdo</h1>
+        <a
+          href={`/classes/${id}/conteudos`}
+          className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+        >
+          Voltar
+        </a>
+      </div>
+
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <form
+          onSubmit={(e) => { e.preventDefault(); alert("Salvar conteúdo: implementar POST /api/classes/[id]/conteudos"); }}
+          className="grid gap-4"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Aula (nº)</label>
+              <input name="lesson" type="number" min={1} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Ex.: 1" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">Título <span className="text-red-600">*</span></label>
+              <input name="title" required className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Ex.: Robótica de introdução" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Conteúdo da Aula <span className="text-red-600">*</span></label>
+            <textarea name="content" required rows={3} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="O que será abordado…"></textarea>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Objetivos</label>
+            <textarea name="goals" rows={3} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="- Identificar…&#10;- Compreender…"></textarea>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Desenvolvimento das Atividades</label>
+            <textarea name="activities" rows={4} className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Passo a passo/roteiro da aula…"></textarea>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Recursos Didáticos</label>
+              <input name="resources" className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="Kit robótico, notebook, projetor…" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">BNCC</label>
+              <input name="bncc" className="mt-1 w-full rounded-xl border px-3 py-2" placeholder="EF02TE01; EF05CI06" />
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <button type="submit" className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90">
+              Salvar conteúdo
+            </button>
+            <a href={`/classes/${id}/conteudos`} className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700">
+              Cancelar
+            </a>
+          </div>
+        </form>
+      </div>
+
+      <div className="mt-6 rounded-2xl border bg-white p-6">
+        <p className="text-sm text-gray-600">
+          Também é possível <a className="text-[#0A66FF] underline" href={`/classes/${id}/conteudos/import`}>importar conteúdos por planilha</a>.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">Baixar modelo CSV</a>
+          <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">Baixar modelo XLSX</a>
+        </div>
+      </div>
+    </main>
+  );
+}
+----- END app/classes/[id]/conteudos/new/page.tsx
+
+==== 2) ROTAS API ====
+----- BEGIN app/api/classes/[id]/students/import/route.ts
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+
+// Garantir Node.js (xlsx não roda no edge)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Row = { name?: string; cpf?: string; contact?: string };
+
+function norm(h: string) {
+  return h
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+async function parseCSV(file: File): Promise<Row[]> {
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (!lines.length) return [];
+  const headers = lines[0].split(/[,;|\t]/).map(norm);
+  const out: Row[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(/[,;|\t]/);
+    const row: any = {};
+    headers.forEach((h, idx) => {
+      const v = (cols[idx] ?? "").toString().trim();
+      if (h === "name" || h === "nome") row.name = v;
+      else if (h === "cpf") row.cpf = v;
+      else if (h === "contact" || h === "contato" || h === "telefone" || h === "whatsapp") row.contact = v;
+    });
+    out.push(row);
+  }
+  return out;
+}
+
+async function parseXLSX(file: File): Promise<Row[]> {
+  const ab = await file.arrayBuffer();
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(ab, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+  return json.map((r) => {
+    const map: any = {};
+    for (const k of Object.keys(r)) {
+      const nk = norm(k);
+      map[nk] = r[k];
+    }
+    const row: Row = {};
+    row.name = (map["name"] ?? map["nome"] ?? "").toString().trim();
+    row.cpf = (map["cpf"] ?? "").toString().trim();
+    row.contact = (map["contact"] ?? map["contato"] ?? map["telefone"] ?? map["whatsapp"] ?? "").toString().trim();
+    return row;
+  });
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
+
+  const form = await req.formData().catch(() => null);
+  const file = form?.get("file") as File | null;
+  if (!file) return NextResponse.json({ ok: false, error: "Arquivo não enviado (campo 'file')." }, { status: 400 });
+
+  const cls = await prisma.class.findFirst({
+    where: { id, ownerId: user.id },
+    select: { id: true }
+  });
+  if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada." }, { status: 404 });
+
+  try {
+    const mime = (file.type || "").toLowerCase();
+    const name = (file as any).name ? String((file as any).name).toLowerCase() : "";
+
+    let rows: Row[] = [];
+
+    // 1) CSV explícito por MIME ou extensão
+    const looksCSV = mime.includes("csv") || name.endsWith(".csv");
+    // 2) XLSX explícito por MIME ou extensão
+    const looksXLSX = mime.includes("spreadsheet") || mime.includes("excel") || name.endsWith(".xlsx");
+
+    if (looksXLSX) {
+      rows = await parseXLSX(file);
+    } else if (looksCSV) {
+      rows = await parseCSV(file);
+    } else {
+      // Caso incerto (sem name e sem MIME confiável): tenta XLSX primeiro e cai pra CSV
+      try {
+        rows = await parseXLSX(file);
+      } catch {
+        rows = await parseCSV(file);
+      }
+    }
+
+    const toInsert = rows
+      .map(r => ({
+        name: (r.name ?? "").toString().trim(),
+        cpf: (r.cpf ?? "").toString().trim(),
+        contact: (r.contact ?? "").toString().trim(),
+      }))
+      .filter(r => r.name.length > 0);
+
+    if (!toInsert.length) {
+      return NextResponse.json({ ok: false, error: "Planilha sem linhas válidas. A coluna 'name' é obrigatória." }, { status: 400 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const r of toInsert) {
+        await tx.student.create({
+          data: {
+            classId: id,
+            name: r.name,
+            ...(r.cpf ? { cpf: r.cpf } : {}),
+            ...(r.contact ? { contact: r.contact } : {}),
+          },
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, inserted: toInsert.length });
+  } catch (e: any) {
+    console.error("IMPORT students error:", e);
+    const msg = e?.message || "Falha ao processar a planilha.";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+----- END app/api/classes/[id]/students/import/route.ts
+----- BEGIN app/api/classes/[id]/conteudos/import/route.ts
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+
+// CSV simples (com aspas) -> objetos
+function parseCsv(text: string): Record<string,string>[] {
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+  if (lines.length === 0) return [];
+  const header = lines[0].split(",").map(h => h.trim());
+  const rows: Record<string,string>[] = [];
+  for (let i=1;i<lines.length;i++){
+    const raw = lines[i];
+    const cells: string[] = [];
+    let cur = "", inside = false;
+    for (let j=0;j<raw.length;j++){
+      const ch = raw[j];
+      if (ch === '"') { inside = !inside; continue; }
+      if (ch === ',' && !inside) { cells.push(cur); cur = ""; continue; }
+      cur += ch;
+    }
+    cells.push(cur);
+    const obj: Record<string,string> = {};
+    header.forEach((h, idx) => obj[h] = (cells[idx] ?? "").trim());
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+  const b = [];
+  if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+  if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+  if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+  if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+  return b.join("\n");
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+
+  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+  if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
+
+  const form = await req.formData();
+  const file = form.get("file") as File | null;
+  if (!file) return NextResponse.json({ ok:false, error: "Arquivo ausente" }, { status: 400 });
+
+  const name = (file.name || "").toLowerCase();
+  if (name.endsWith(".xlsx")) {
+    // Para suportar XLSX, adicione a lib "xlsx" e faça o parse aqui.
+    // Ex.: const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: "array" });
+    // Por ora, retornamos instrução amigável:
+    return NextResponse.json({
+      ok:false,
+      error:"XLSX ainda não habilitado no servidor. Envie CSV ou instale a dependência 'xlsx' e habilite o parser."
+    }, { status: 415 });
+  }
+
+  const text = await file.text();
+  const rows = parseCsv(text);
+  if (rows.length === 0) return NextResponse.json({ ok:false, error: "Planilha vazia ou inválida" }, { status: 400 });
+
+  // Campos aceitos: Nome da aula (obrigatório), objetivos, desenvolvimento das atividades, recursos pedagógicos, BNCC
+  // Cabeçalhos esperados (case-insensitive): "nome da aula" | "aula" | "título", "objetivos", "desenvolvimento das atividades", "recursos pedagógicos", "bncc"
+  const norm = (s:string) => s.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().trim();
+
+  let created = 0, updated = 0;
+
+  await prisma.$transaction(async (tx) => {
+    // define seq auto pelo maior existente
+    let last = await tx.content.findFirst({ where: { classId: id }, orderBy: { seq: "desc" }, select: { seq: true } });
+    let seq = (last?.seq ?? 0);
+
+    for (const r of rows) {
+      const keys = Object.fromEntries(Object.keys(r).map(k => [norm(k), k]));
+      const title = (r[keys[norm("nome da aula")] ?? keys["titulo"] ?? keys["aula"]] ?? "").toString().trim();
+      if (!title) continue;
+
+      const objetivos = (r[keys["objetivos"]] ?? "").toString().trim();
+      const desenvolvimento = (r[keys[norm("desenvolvimento das atividades")]] ?? "").toString().trim();
+      const recursos = (r[keys[norm("recursos pedagogicos")]] ?? "").toString().trim();
+      const bncc = (r[keys["bncc"]] ?? "").toString().trim();
+
+      seq += 1;
+
+      await tx.content.create({
+        data: {
+          classId: id,
+          seq,
+          title,
+          bodyHtml: toBodyHtml({ objetivos, desenvolvimento, recursos, bncc })
+        }
+      });
+      created++;
+    }
+  });
+
+  return NextResponse.json({ ok:true, created, updated });
+}
+----- END app/api/classes/[id]/conteudos/import/route.ts
+
+==== 3) TREE (nível 4) ====
+.
+├── app
+│   ├── api
+│   │   ├── auth
+│   │   │   ├── login
+│   │   │   ├── logout
+│   │   │   ├── me
+│   │   │   ├── recover-email
+│   │   │   └── register
+│   │   ├── classes
+│   │   │   ├── [id]
+│   │   │   └── route.ts
+│   │   └── images
+│   │       └── generate
+│   ├── (auth)
+│   │   ├── login
+│   │   │   └── page.tsx
+│   │   ├── recover
+│   │   │   └── page.tsx
+│   │   ├── recover-email
+│   │   │   └── page.tsx
+│   │   └── register
+│   │       └── page.tsx
+│   ├── classes
+│   │   └── [id]
+│   │       ├── chamadas
+│   │       ├── conteudos
+│   │       ├── page.tsx
+│   │       └── StudentsPanel.tsx
+│   ├── dashboard
+│   │   └── page.tsx
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── manifest.webmanifest
+│   │   └── route.ts
+│   ├── metadata.ts
+│   ├── offline
+│   │   └── page.tsx
+│   └── page.tsx
+├── components
+│   ├── DevSwKiller.tsx
+│   └── LoginCard.tsx
+├── eslint.config.mjs
+├── .gitignore
+├── lib
+│   ├── email.ts
+│   ├── prisma.ts
+│   └── session.ts
+├── middleware.ts
+├── next.config.js
+├── next.config.mjs
+├── next.config.ts
+├── next-env.d.ts
+├── package.json
+├── pnpm-builds.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── postcss.config.cjs
+├── postcss.config.mjs
+├── prisma
+│   └── schema.prisma
+├── public
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── icons
+│   │   ├── icon-192.png
+│   │   ├── icon-512.png
+│   │   └── maskable-512.png
+│   ├── manifest.json
+│   ├── next.svg
+│   ├── sw.js
+│   ├── templates
+│   │   ├── contents.csv
+│   │   ├── CONTENTS_README.txt
+│   │   ├── contents.xlsx
+│   │   ├── conteudos.csv
+│   │   ├── conteudos.xlsx
+│   │   ├── README.txt
+│   │   ├── students.csv
+│   │   └── students.xlsx
+│   ├── vercel.svg
+│   └── window.svg
+├── README.md
+├── styles
+│   └── globals.css
+└── tsconfig.json
+
+31 directories, 55 files
+
+==== 4) CSV (amostra) ====
+Arquivo CSV: ./public/templates/contents.csv
+----- BEGIN head -n 40 ./public/templates/contents.csv
+Aula,Título,Conteúdo da Aula,Objetivos,Desenvolvimento das Atividades,Recursos Didáticos,BNCC
+1,Robótica de Introdução,"O que é robótica? Conceitos básicos.","
+- Identificar componentes básicos
+- Compreender aplicações no cotidiano
+","Quebra-gelo; demonstração de kit; atividade em duplas montando circuito simples.","Kit robótico, notebook, projetor.","EF02TE01; EF05CI06"
+----- END ./public/templates/contents.csv
+
+==== 5) COLE AQUI NO TERMINAL (Console/Network) ====
+[Console] Mensagem/stack:
+[Network] Método | URL | Status | Response JSON:
