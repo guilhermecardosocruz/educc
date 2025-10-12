@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
-// CSV simples (com aspas) -> objetos
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function parseCsv(text: string): Record<string,string>[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim().length);
   if (lines.length === 0) return [];
@@ -35,6 +37,21 @@ function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos
   return b.join("\n");
 }
 
+const norm = (s:string) => s.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().trim();
+
+async function parseXlsx(file: File): Promise<Record<string,string>[]> {
+  const ab = await file.arrayBuffer();
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(new Uint8Array(ab), { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+  return json.map((r) => {
+    const out: Record<string,string> = {};
+    for (const k of Object.keys(r)) out[k] = String(r[k] ?? "").trim();
+    return out;
+  });
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
@@ -48,28 +65,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!file) return NextResponse.json({ ok:false, error: "Arquivo ausente" }, { status: 400 });
 
   const name = (file.name || "").toLowerCase();
-  if (name.endsWith(".xlsx")) {
-    // Para suportar XLSX, adicione a lib "xlsx" e faça o parse aqui.
-    // Ex.: const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: "array" });
-    // Por ora, retornamos instrução amigável:
-    return NextResponse.json({
-      ok:false,
-      error:"XLSX ainda não habilitado no servidor. Envie CSV ou instale a dependência 'xlsx' e habilite o parser."
-    }, { status: 415 });
+  const isXlsx = name.endsWith(".xlsx");
+  const isCsv  = name.endsWith(".csv");
+
+  let rows: Record<string,string>[];
+  if (isXlsx) {
+    rows = await parseXlsx(file);
+  } else if (isCsv) {
+    rows = parseCsv(await file.text());
+  } else {
+    try { rows = await parseXlsx(file); }
+    catch { rows = parseCsv(await file.text()); }
   }
 
-  const text = await file.text();
-  const rows = parseCsv(text);
   if (rows.length === 0) return NextResponse.json({ ok:false, error: "Planilha vazia ou inválida" }, { status: 400 });
 
-  // Campos aceitos: Nome da aula (obrigatório), objetivos, desenvolvimento das atividades, recursos pedagógicos, BNCC
-  // Cabeçalhos esperados (case-insensitive): "nome da aula" | "aula" | "título", "objetivos", "desenvolvimento das atividades", "recursos pedagógicos", "bncc"
-  const norm = (s:string) => s.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().trim();
-
-  let created = 0, updated = 0;
-
+  let created = 0;
   await prisma.$transaction(async (tx) => {
-    // define seq auto pelo maior existente
     let last = await tx.content.findFirst({ where: { classId: id }, orderBy: { seq: "desc" }, select: { seq: true } });
     let seq = (last?.seq ?? 0);
 
@@ -86,16 +98,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       seq += 1;
 
       await tx.content.create({
-        data: {
-          classId: id,
-          seq,
-          title,
-          bodyHtml: toBodyHtml({ objetivos, desenvolvimento, recursos, bncc })
-        }
+        data: { classId: id, seq, title, bodyHtml: toBodyHtml({ objetivos, desenvolvimento, recursos, bncc }) }
       });
       created++;
     }
   });
 
-  return NextResponse.json({ ok:true, created, updated });
+  return NextResponse.json({ ok:true, created, updated: 0 });
 }
