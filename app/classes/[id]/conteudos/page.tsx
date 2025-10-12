@@ -154,10 +154,10 @@ export default function ConteudosPage() {
             {importing ? "Enviando..." : "Enviar planilha"}
           </button>
           {fname && <span className="text-xs text-gray-700">Selecionado: {fname}</span>}
-          <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/conteudos.csv" target="_blank" rel="noreferrer">
+          <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">
             Baixar modelo CSV
           </a>
-          <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/conteudos.xlsx" target="_blank" rel="noreferrer">
+          <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">
             Baixar modelo XLSX
           </a>
         </div>
