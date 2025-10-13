@@ -104,12 +104,24 @@ export default function ReportButton({ classId, className }: { classId: string; 
       // Métricas e ranking
       const faltas = new Map<string, number>();
       students.forEach((s) => faltas.set(s.id, 0));
+
+      let somaPresentes = 0;
       for (const seq of seqs) {
         const pres = presenceBySeq[seq] || {};
+        let presentes = 0;
         students.forEach((s) => {
-          if (!pres[s.id]) faltas.set(s.id, (faltas.get(s.id) || 0) + 1);
+          if (pres[s.id]) presentes++;
+          else faltas.set(s.id, (faltas.get(s.id) || 0) + 1);
         });
+        somaPresentes += presentes;
       }
+
+      const totalAlunos = students.length;
+      const totalAulas = seqs.length;
+      const mediaPresentesAbs = totalAulas ? Math.round((somaPresentes / totalAulas) * 100) / 100 : 0;
+      const mediaPercentual =
+        totalAulas && totalAlunos ? Math.round((mediaPresentesAbs / totalAlunos) * 10000) / 100 : 0;
+
       const ranking: RankRow[] = students
         .map<RankRow>((s) => ({ name: s.name, faltas: faltas.get(s.id) || 0 }))
         .sort((a: RankRow, b: RankRow) => b.faltas - a.faltas);
@@ -131,6 +143,19 @@ export default function ReportButton({ classId, className }: { classId: string; 
       doc.setFontSize(10);
       doc.text(`Período: ${start} a ${end}`, margin, y);
       y += 24;
+
+      // >>>>>>> NOVO BLOCO (resumo do período) — adicionado sem alterar o restante
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("Resumo do período", margin, y);
+      y += 16;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Total de alunos na turma: ${totalAlunos}`, margin, y); y += 14;
+      doc.text(`Média de presentes (abs.): ${mediaPresentesAbs}`, margin, y); y += 14;
+      doc.text(`Média de presença (%): ${mediaPercentual}%`, margin, y); y += 20;
+      // <<<<<<< FIM DO NOVO BLOCO
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
