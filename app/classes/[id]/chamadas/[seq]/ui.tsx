@@ -27,7 +27,7 @@ export default function EditChamadaClient({
 
   const [title, setTitle] = useState(initialTitle || "");
   const [students, setStudents] = useState<Student[]>(initialStudents || []);
-  const [presence, setPresence] = useState<Record<string, boolean>>({});
+  const [presence, setPresence] = useState<Record<string, boolean>>(initialPresence || {});
   const [lessonDate, setLessonDate] = useState<string>(initialLessonDate || "");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -49,19 +49,12 @@ export default function EditChamadaClient({
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
+  // Carrega presenças do servidor (caso initialPresence não venha completo)
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
         if (!res.ok) throw new Error();
-      // Atualiza data (idempotente se vazio)
-      const res2 = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ lessonDate: lessonDate || undefined })
-      });
-      const d2 = await res2.json().catch(() => ({}));
-      if (!res2.ok || d2?.ok === false) throw new Error(d2?.error || "Falha ao atualizar data");
         const data = await res.json();
         const map: Record<string, boolean> = {};
         if (Array.isArray(data?.rows)) {
@@ -87,11 +80,7 @@ export default function EditChamadaClient({
     setPresence(all);
   }
 
-  // Modal editar
-  function onDblClickStudent(st: Student) {
-    setEditId(st.id);
-    setEditName(st.name);
-  }
+  // Atualiza somente o nome do aluno (modal)
   async function handleEditSave() {
     if (!editId) return;
     const name = editName.trim();
@@ -128,6 +117,23 @@ export default function EditChamadaClient({
       setEditName("");
     } catch (e: any) {
       alert("Erro ao excluir aluno");
+      console.error(e);
+    }
+  }
+
+  // PUT da data quando o usuário altera
+  async function onChangeDate(v: string) {
+    setLessonDate(v);
+    try {
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lessonDate: v || undefined })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d?.ok === false) throw new Error(d?.error || "Falha ao atualizar data");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao atualizar data");
       console.error(e);
     }
   }
@@ -179,44 +185,6 @@ export default function EditChamadaClient({
       alert("Informe o nome (mínimo 2 caracteres).");
       return;
     }
-
-  // Importação CSV/XLSX
-  async function handleImportSend() {
-    if (!classId || !uploadFile) {
-      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
-      return;
-    }
-    setImporting(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", uploadFile);
-      const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
-      // Recarrega alunos e refaz mapa de presenças (marca todos como presentes por padrão)
-      const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
-      const data2 = await res2.json().catch(() => ({}));
-      if (data2?.ok && Array.isArray(data2.students)) {
-        setStudents(data2.students);
-        setPresence((prev) => {
-    const n: Record<string, boolean> = { ...(prev || {}) };
-    for (const st of data2.students) {
-      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
-    }
-    return n;
-  });
-      }
-      setUploadName(null);
-      setUploadFile(null);
-      if (fileRef.current) fileRef.current.value = "";
-    } catch (e) {
-      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
-      console.error(e);
-    } finally {
-      setImporting(false);
-    }
-  }
     setAdding(true);
     try {
       const body: any = { name };
@@ -252,13 +220,8 @@ export default function EditChamadaClient({
     }
   }
 
-  const totalPresentes = useMemo(
-    () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
-    [students, presence]
-  );
-
-  // Importação CSV/XLSX (escopo local do componente)
-  const __handleImportSend = async () => {
+  // Importar CSV/XLSX
+  async function __handleImportSend() {
     if (!classId || !uploadFile) {
       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
       return;
@@ -277,12 +240,12 @@ export default function EditChamadaClient({
       if (data2?.ok && Array.isArray(data2.students)) {
         setStudents(data2.students);
         setPresence((prev) => {
-    const n: Record<string, boolean> = { ...(prev || {}) };
-    for (const st of data2.students) {
-      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
-    }
-    return n;
-  });
+          const n: Record<string, boolean> = { ...(prev || {}) };
+          for (const st of data2.students) {
+            if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+          }
+          return n;
+        });
       }
       setUploadName(null);
       setUploadFile(null);
@@ -293,7 +256,12 @@ export default function EditChamadaClient({
     } finally {
       setImporting(false);
     }
-  };
+  }
+
+  const totalPresentes = useMemo(
+    () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+    [students, presence]
+  );
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
@@ -311,14 +279,27 @@ export default function EditChamadaClient({
             </h1>
             <p className="text-sm text-gray-600">Atualize presenças, cadastre alunos e gerencie esta chamada.</p>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-500">Nome da aula</div>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex.: Aula 01 - Revisão"
-              className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-            />
+
+          {/* Título + Data (desktop na mesma linha, mobile quebra) */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="text-right">
+              <div className="text-xs text-gray-500">Nome da aula</div>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex.: Aula 01 - Revisão"
+                className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
+            <div className="min-w-40">
+              <div className="text-xs text-gray-500">Data</div>
+              <input
+                type="date"
+                value={lessonDate}
+                onChange={(e) => onChangeDate(e.target.value)}
+                className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
           </div>
         </div>
 
@@ -411,7 +392,7 @@ export default function EditChamadaClient({
                     <div className="px-3 py-2">
                       <div
                         className="font-medium text-gray-900 cursor-pointer select-none"
-                        onDoubleClick={() => onDblClickStudent(s)}
+                        onDoubleClick={() => { setEditId(s.id); setEditName(s.name); }}
                         title="Duplo clique para editar"
                       >
                         {s.name}
@@ -516,7 +497,8 @@ export default function EditChamadaClient({
                   </a>
                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
                     Baixar modelo XLSX
-                  </a></div>
+                  </a>
+                </div>
               </div>
             </div>
           </div>

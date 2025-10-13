@@ -153,7 +153,7 @@ export default function NewCallPage() {
   }
 
   // Importação CSV/XLSX
-  async function handleImportSend() {
+  async function __handleImportSend() {
     if (!id || !uploadFile) {
       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
       return;
@@ -222,44 +222,6 @@ export default function NewCallPage() {
     [students, presence]
   );
 
-  // Importação CSV/XLSX (escopo local do componente)
-  const __handleImportSend = async () => {
-    if (!id || !uploadFile) {
-      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
-      return;
-    }
-    setImporting(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", uploadFile);
-      const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
-      // Recarregar alunos e refazer mapa de presenças (marca todos como presentes)
-      const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
-      const data2 = await res2.json().catch(() => ({}));
-      if (data2?.ok && Array.isArray(data2.students)) {
-        setStudents(data2.students);
-        setPresence((prev) => {
-    const n: Record<string, boolean> = { ...(prev || {}) };
-    for (const st of data2.students) {
-      if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
-    }
-    return n;
-  });
-      }
-      setUploadName(null);
-      setUploadFile(null);
-      if (fileRef.current) fileRef.current.value = "";
-    } catch (e) {
-      const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
-      console.error(e);
-    } finally {
-      setImporting(false);
-    }
-  };
-
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
       <nav className="mb-4 text-sm">
@@ -272,14 +234,27 @@ export default function NewCallPage() {
             <h1 className="text-xl font-semibold text-gray-900">Nova chamada</h1>
             <p className="text-sm text-gray-600">Marque a presença e crie a chamada desta aula.</p>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-500">Nome da aula</div>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex.: Aula 01 - Introdução"
-              className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-            />
+
+          {/* Título + Data (desktop na mesma linha, mobile quebra) */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="text-right">
+              <div className="text-xs text-gray-500">Nome da aula</div>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex.: Aula 01 - Introdução"
+                className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
+            <div className="min-w-40">
+              <div className="text-xs text-gray-500">Data</div>
+              <input
+                type="date"
+                value={lessonDate}
+                onChange={(e) => setLessonDate(e.target.value)}
+                className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
           </div>
         </div>
 
@@ -467,7 +442,8 @@ export default function NewCallPage() {
                   </a>
                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
                     Baixar modelo XLSX
-                  </a></div>
+                  </a>
+                </div>
               </div>
             </div>
           </div>
