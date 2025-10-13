@@ -38,3 +38,18 @@ html, body { height: 100%; }
   font-size: 1rem;         /* text-base */
   border-radius: 0.75rem;  /* rounded-xl */
 }
+
+/* Espaçamento e largura total só para os botões DIRETOS do wrapper do ReportButton
+   (não afeta botões dentro dos modais) */
+.actions-stack .w-full > button,
+.actions-stack .w-full > a {
+  display: block;
+  width: 100%;
+}
+
+.actions-stack .w-full > button + button,
+.actions-stack .w-full > a + button,
+.actions-stack .w-full > button + a,
+.actions-stack .w-full > a + a {
+  margin-top: 0.75rem; /* ~mt-3 */
+}
