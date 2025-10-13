@@ -136,14 +136,17 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
         if (y > 700) { doc.addPage(); y = margin; }
         doc.setFont("helvetica","bold"); doc.setFontSize(12);
         doc.text(`${c.seq} — ${c.title}`, margin, y); y+=16;
+
         if (c.bodyHtml) {
           const tmp = document.createElement("div");
           tmp.innerHTML = c.bodyHtml;
-          const plain = tmp.innerText;
+          const plain = tmp.innerText || "";
           const lines = doc.splitTextToSize(plain, 520);
           doc.setFont("helvetica","normal"); doc.setFontSize(10);
-          doc.text(lines, margin, y); y += lines.length*12 + 8;
+          doc.text(lines, margin, y);
+          y += lines.length*12 + 8;
         }
+
         doc.text("────────────────────────────────────────", margin, y); y+=14;
       });
 
@@ -167,7 +170,7 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
         type="button"
         className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700 ml-2"
         onClick={()=>setOpen("contents")}
-      >Relatório Conteúdos</button>
+      >Conteúdos em PDF</button>
 
       {open==="calls" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -194,8 +197,8 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       {open==="contents" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">Relatório de Conteúdos (PDF)</h3>
-            <p className="text-sm text-gray-600 mt-1">Gerar listagem dos conteúdos cadastrados.</p>
+            <h3 className="text-lg font-semibold text-gray-900">Conteúdos em PDF</h3>
+            <p className="text-sm text-gray-600 mt-1">Gerar listagem completa dos conteúdos.</p>
             <div className="mt-5 flex items-center justify-end gap-2">
               <button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-3 py-2 text-sm">Cancelar</button>
               <button type="button" onClick={generateContents} disabled={busy} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white">{busy ? "Gerando..." : "Gerar PDF"}</button>
