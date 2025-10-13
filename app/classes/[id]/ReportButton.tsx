@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 type RankRow = { name: string; faltas: number };
 
 export default function ReportButton({ classId, className }:{ classId:string; className:string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<null | "calls" | "contents">(null);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,20 +30,18 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
     });
   }
 
-  async function generate(){
+  /** Gerar relatório de chamadas */
+  async function generateCalls(){
     if (!start || !end) { alert("Informe início e fim."); return; }
     if (start > end) { alert("Data inicial não pode ser maior que a final."); return; }
     setBusy(true);
     try {
       await ensureJsPdf();
-
-      // alunos
       const stRes = await fetch(`/api/classes/${classId}/students`, { cache:"no-store" });
       const stData = await stRes.json().catch(()=> ({}));
       const students: Array<{ id:string; name:string }> =
         (stRes.ok && stData?.ok && Array.isArray(stData.students)) ? stData.students : [];
 
-      // chamadas
       const chRes = await fetch(`/api/classes/${classId}/chamadas?order=asc`, { cache:"no-store" });
       const chData = await chRes.json().catch(()=> ({}));
       const chamadas: Array<{ seq:number; createdAt:string }> =
@@ -56,7 +54,6 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       });
       const seqs:number[] = periodChamadas.map((c) => c.seq);
 
-      // presenças
       const presenceBySeq: Record<number, Record<string, boolean>> = {};
       for (const seq of seqs) {
         const prRes = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache:"no-store" });
@@ -69,25 +66,14 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
         presenceBySeq[seq] = map;
       }
 
-      // métricas
-      const totalAlunos = students.length;
-      let somaPresentes = 0;
       const faltas = new Map<string, number>();
       students.forEach((s)=> faltas.set(s.id, 0));
-
       for (const seq of seqs) {
         const pres = presenceBySeq[seq] || {};
-        let presentes = 0;
         students.forEach((s)=>{
-          if (pres[s.id]) presentes++;
-          else faltas.set(s.id, (faltas.get(s.id) || 0) + 1);
+          if (!pres[s.id]) faltas.set(s.id, (faltas.get(s.id) || 0) + 1);
         });
-        somaPresentes += presentes;
       }
-
-      const totalAulas = seqs.length;
-      const mediaPresentesAbs = totalAulas ? Math.round((somaPresentes/totalAulas)*100)/100 : 0;
-      const mediaPercentual = (totalAulas && totalAlunos) ? Math.round((mediaPresentesAbs/totalAlunos)*10000)/100 : 0;
 
       const ranking: RankRow[] = students
         .map<RankRow>((s)=> ({ name:s.name, faltas: faltas.get(s.id) || 0 }))
@@ -107,66 +93,59 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       doc.setFont("helvetica","normal"); doc.setFontSize(10);
       doc.text(`Período: ${start} a ${end}`, margin, y); y += 18;
 
-      // cards
-      const cardW = (pageW - margin*2 - 16*2) / 3;
-      const cardH = 56;
-      const cards = [
-        { label:"Total de alunos", value:String(totalAlunos) },
-        { label:"Média de presentes (abs.)", value:String(mediaPresentesAbs) },
-        { label:"Média de presença (%)", value:String(mediaPercentual)+"%" },
-      ];
-      doc.setDrawColor(230); doc.setLineWidth(1);
-      cards.forEach((c,i)=>{
-        const x = margin + i*(cardW+16);
-        doc.roundedRect(x, y, cardW, cardH, 8, 8);
-        doc.setFontSize(9); doc.setTextColor(100);
-        doc.text(c.label, x+10, y+18);
-        doc.setFont("helvetica","bold"); doc.setFontSize(18); doc.setTextColor(0);
-        doc.text(c.value, x+10, y+42);
-        doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(0);
-      });
-      y += cardH + 24;
-
-      // ranking
-      doc.setFont("helvetica","bold"); doc.setFontSize(12);
-      doc.text("Ranking dos mais faltosos", margin, y); y += 14;
-      doc.setFont("helvetica","normal"); doc.setFontSize(10);
-
-      const col1 = margin, col2 = margin+40, col3 = pageW - margin - 60;
-      // cabeçalho
-      doc.setFillColor(249,250,251);
-      doc.rect(margin, y-10, pageW - margin*2, 22, "F");
-      doc.setFont("helvetica","bold");
-      doc.text("#", col1, y);
-      doc.text("Aluno", col2, y);
-      doc.text("Faltas", col3, y);
-      y += 14;
+      doc.setFont("helvetica","bold"); doc.text("Ranking dos mais faltosos", margin, y); y+=14;
       doc.setFont("helvetica","normal");
-
-      const rowH = 16;
-      for (let i=0;i<ranking.length;i++){
-        const r = ranking[i];
+      const col1 = margin, col2 = margin+40, col3 = pageW - margin - 60;
+      ranking.forEach((r,i)=>{
         if (y > pageH - margin) { doc.addPage(); y = margin; }
         doc.text(String(i+1), col1, y);
-        const nomeLines = doc.splitTextToSize(r.name, col3 - col2 - 10);
-        doc.text(nomeLines, col2, y);
+        doc.text(r.name, col2, y);
         doc.text(String(r.faltas), col3, y);
-        y += rowH + (nomeLines.length-1)*10;
-      }
-
-      const footer = `Total de aulas consideradas: ${seqs.length}`;
-      doc.setFontSize(9); doc.setTextColor(120);
-      doc.text(footer, margin, pageH - margin/2);
+        y+=16;
+      });
 
       const file = `Relatorio_Chamadas_${className.replace(/\\s+/g,"_")}_${start}_a_${end}.pdf`;
       doc.save(file);
-      setOpen(false);
+      setOpen(null);
     } catch (e:any) {
-      console.error(e);
-      alert(e?.message || "Falha ao gerar PDF.");
-    } finally {
-      setBusy(false);
-    }
+      console.error(e); alert(e?.message || "Falha ao gerar PDF.");
+    } finally { setBusy(false); }
+  }
+
+  /** Gerar relatório de conteúdos */
+  async function generateContents(){
+    setBusy(true);
+    try {
+      await ensureJsPdf();
+      const res = await fetch(`/api/classes/${classId}/conteudos`, { cache:"no-store" });
+      const data = await res.json().catch(()=> ({}));
+      const list: Array<{ seq:number; title:string }> =
+        (res.ok && data?.ok && Array.isArray(data.list)) ? data.list : [];
+
+      // PDF
+      // @ts-ignore
+      const { jsPDF } = (window as any).jspdf;
+      const doc = new jsPDF({ unit:"pt", format:"a4" });
+      const margin = 40;
+      let y = margin;
+
+      doc.setFont("helvetica","bold"); doc.setFontSize(14);
+      doc.text(`Conteúdos — ${className}`, margin, y); y+=24;
+
+      list.forEach((c)=>{
+        if (y > 700) { doc.addPage(); y = margin; }
+        doc.setFont("helvetica","bold"); doc.setFontSize(12);
+        doc.text(`${c.seq} — ${c.title}`, margin, y); y+=18;
+        doc.setFont("helvetica","normal"); doc.setFontSize(10);
+        doc.text("────────────────────────────────────────", margin, y); y+=14;
+      });
+
+      const file = `Conteudos_${className.replace(/\\s+/g,"_")}.pdf`;
+      doc.save(file);
+      setOpen(null);
+    } catch (e:any) {
+      console.error(e); alert(e?.message || "Falha ao gerar PDF.");
+    } finally { setBusy(false); }
   }
 
   return (
@@ -174,32 +153,45 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       <button
         type="button"
         className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
-        title="Gerar relatório de presenças (PDF) por período"
-        onClick={()=>setOpen(true)}
+        onClick={()=>setOpen("calls")}
       >Relatório Chamadas</button>
 
-      {open && (
+      <button
+        type="button"
+        className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700 ml-2"
+        onClick={()=>setOpen("contents")}
+      >Relatório Conteúdos</button>
+
+      {open==="calls" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900">Relatório de Chamadas (PDF)</h3>
-            <p className="text-sm text-gray-600 mt-1">Escolha o período para consolidar presenças.</p>
-
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="grid gap-1 text-sm">
                 <span className="text-gray-700">Início</span>
-                <input value={start} onChange={e=>setStart(e.target.value)} type="date" className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" required />
+                <input value={start} onChange={e=>setStart(e.target.value)} type="date" className="rounded-xl border px-3 py-2" required />
               </label>
               <label className="grid gap-1 text-sm">
                 <span className="text-gray-700">Fim</span>
-                <input value={end} onChange={e=>setEnd(e.target.value)} type="date" className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" required />
+                <input value={end} onChange={e=>setEnd(e.target.value)} type="date" className="rounded-xl border px-3 py-2" required />
               </label>
             </div>
-
             <div className="mt-5 flex items-center justify-end gap-2">
-              <button type="button" onClick={()=>setOpen(false)} className="rounded-xl border px-3 py-2 text-sm hover:border-blue-400 hover:text-blue-700">Cancelar</button>
-              <button type="button" onClick={generate} disabled={busy} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90">
-                {busy ? "Gerando..." : "Gerar PDF"}
-              </button>
+              <button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-3 py-2 text-sm">Cancelar</button>
+              <button type="button" onClick={generateCalls} disabled={busy} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white">{busy ? "Gerando..." : "Gerar PDF"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {open==="contents" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Relatório de Conteúdos (PDF)</h3>
+            <p className="text-sm text-gray-600 mt-1">Gerar listagem dos conteúdos cadastrados.</p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-3 py-2 text-sm">Cancelar</button>
+              <button type="button" onClick={generateContents} disabled={busy} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white">{busy ? "Gerando..." : "Gerar PDF"}</button>
             </div>
           </div>
         </div>
