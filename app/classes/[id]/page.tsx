@@ -147,20 +147,42 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     if (!classId || !start || !end) { alert('Informe as datas.'); return; }
     if (start > end) { alert('Data inicial não pode ser maior que a final.'); return; }
 
+    // ✅ abre a janela imediatamente (gesto do usuário) para evitar bloqueio de popup
+    const w = window.open('', '_blank', 'noopener,noreferrer');
+    if (!w) { alert('Bloqueado pelo navegador. Permita pop-ups para gerar o PDF.'); return; }
+
+    // placeholder enquanto buscamos os dados
+    const baseCss = \`
+      :root { --blue:#0A66FF; --gray:#111827; }
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji','Segoe UI Emoji'; margin: 32px; color: var(--gray); }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      h2 { font-size: 16px; margin: 20px 0 8px; }
+      .muted { color: #6b7280; font-size: 12px; }
+      .chip { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color: var(--blue); font-weight:600; font-size:12px; }
+      .grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+      .card { border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
+      table { width:100%; border-collapse: collapse; font-size: 12px; }
+      th, td { padding: 8px; border-bottom:1px solid #e5e7eb; text-align:left; }
+      th { background:#f9fafb; font-weight:600; }
+      @media print { .no-print { display:none; } }
+    \`;
+    w.document.open();
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Chamadas</title><style>'+baseCss+'</style></head><body><div class="muted">Gerando relatório…</div></body></html>');
+    w.document.close();
+
     try {
       // 1) alunos
       const stRes = await fetch('/api/classes/'+classId+'/students', { cache: 'no-store' });
       const stData = await stRes.json().catch(()=>({}));
       const students = (stRes.ok && stData && stData.ok && Array.isArray(stData.students)) ? stData.students : [];
-      const studentIdSet = new Set(students.map(s => s.id));
 
-      // 2) chamadas (usa createdAt como referência de data para o período)
+      // 2) chamadas (usa createdAt como referência de data)
       const chRes = await fetch('/api/classes/'+classId+'/chamadas?order=asc', { cache: 'no-store' });
       const chData = await chRes.json().catch(()=>({}));
       const chamadas = (chRes.ok && chData && chData.ok && Array.isArray(chData.attendances)) ? chData.attendances : [];
 
       // filtra por período [start, end]
-      function onlyDate(iso){ return (iso||'').slice(0,10); }
+      const onlyDate = (iso) => (iso||'').slice(0,10);
       const periodChamadas = chamadas.filter(c => {
         const d = onlyDate(c.createdAt);
         return d && d >= start && d <= end;
@@ -175,8 +197,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         const rows = (prRes.ok && prData && prData.ok && Array.isArray(prData.rows)) ? prData.rows : [];
         const map = {};
         for (const r of rows) { map[r.studentId] = !!r.present; }
-        // garante entradas para todos os alunos (ausentes implícitos)
-        students.forEach(s => { if (!(s.id in map)) map[s.id] = false; });
+        students.forEach(s => { if (!(s.id in map)) map[s.id] = false; }); // ausente por padrão
         presenceMapBySeq[seq] = map;
       }
 
@@ -201,30 +222,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       const mediaPresentesAbs = totalAulas > 0 ? Math.round((somaPresentes / totalAulas) * 100) / 100 : 0;
       const mediaPercentual = (totalAlunos > 0 && totalAulas > 0) ? Math.round((mediaPresentesAbs / totalAlunos) * 10000)/100 : 0;
 
-      // ranking de faltosos (maior -> menor)
       const ranking = students
         .map(s => ({ id: s.id, name: s.name, faltas: faltasPorAluno.get(s.id) || 0 }))
         .sort((a,b) => b.faltas - a.faltas)
-        .slice(0, 50); // top 50 por segurança
-
-      // 5) cria janela printável
-      const w = window.open('', '_blank', 'noopener,noreferrer');
-      if (!w) { alert('Bloqueado pelo navegador. Permita pop-ups para gerar o PDF.'); return; }
-
-      const css = \`
-        :root { --blue: #0A66FF; --gray:#111827; }
-        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji','Segoe UI Emoji'; margin: 32px; color: var(--gray); }
-        h1 { font-size: 20px; margin: 0 0 8px; }
-        h2 { font-size: 16px; margin: 20px 0 8px; }
-        .muted { color: #6b7280; font-size: 12px; }
-        .chip { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color: var(--blue); font-weight:600; font-size:12px; }
-        .grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
-        .card { border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
-        table { width:100%; border-collapse: collapse; font-size: 12px; }
-        th, td { padding: 8px; border-bottom:1px solid #e5e7eb; text-align:left; }
-        th { background:#f9fafb; font-weight:600; }
-        @media print { .no-print { display:none; } }
-      \`;
+        .slice(0, 50);
 
       const headerHtml = \`
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -259,16 +260,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </table>
       \`;
 
+      // atualiza conteúdo da janela já aberta
       w.document.open();
-      w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Chamadas</title><style>'+css+'</style></head><body>'+headerHtml+resumoHtml+rankingHtml+'<div class="no-print" style="margin-top:16px;"><button onclick="window.print()">Imprimir / Salvar PDF</button></div></body></html>');
+      w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Chamadas</title><style>'+baseCss+'</style></head><body>'+headerHtml+resumoHtml+rankingHtml+'<div class="no-print" style="margin-top:16px;"><button onclick="window.print()">Imprimir / Salvar PDF</button></div></body></html>');
       w.document.close();
 
-      // fecha modal
+      // fecha modal e dispara print
       if ('close' in dlg) dlg.close(); else dlg.removeAttribute('open');
-      // dispara print automaticamente após carregamento
-      setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 300);
+      setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 200);
     } catch (e) {
       console.error(e);
+      try {
+        w.document.body.innerHTML = '<div style="color:#b91c1c;">Falha ao gerar relatório.</div>';
+      } catch {}
       alert('Falha ao gerar relatório.');
     }
   });
