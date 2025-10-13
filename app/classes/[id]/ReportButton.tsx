@@ -176,9 +176,7 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
         className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
         title="Gerar relatório de presenças (PDF) por período"
         onClick={()=>setOpen(true)}
-      >
-        Relatório (PDF)
-      </button>
+      >Relatório Chamadas</button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
