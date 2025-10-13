@@ -24,3 +24,18 @@
   font-size: 1rem;         /* text-base */
   border-radius: 0.75rem;  /* rounded-xl */
 }
+
+/* ===== Correção da stack de ações: links/botões grandes e 100% ===== */
+.actions-stack a,
+.actions-stack button {
+  display: block;          /* <— chave para respeitar width */
+  width: 100%;
+  text-align: center;
+  padding-top: 0.875rem;   /* ~py-3.5 */
+  padding-bottom: 0.875rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  font-size: 1rem;         /* text-base */
+  border-radius: 0.75rem;  /* rounded-xl */
+}
+.actions-stack a { text-decoration: none; }
