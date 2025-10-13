@@ -53,3 +53,34 @@ html, body { height: 100%; }
 .actions-stack .w-full > a + a {
   margin-top: 0.75rem; /* ~mt-3 */
 }
+
+/* === Stack vertical de ações: todos os filhos com mesma largura/alinhamento === */
+.actions-stack { 
+  max-width: 28rem;          /* largura do bloco de ações */
+  margin-inline: auto;
+}
+.actions-stack > * {
+  width: 100%;               /* cada item (Link, div do ReportButton etc.) ocupa 100% */
+}
+.actions-stack a,
+.actions-stack button {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 0.875rem 1rem;     /* py-3.5 */
+  font-size: 1rem;            /* text-base */
+  border-radius: 0.75rem;     /* rounded-xl */
+  box-sizing: border-box;     /* evita “pular” largura por causa da borda */
+}
+
+/* Espaço entre os DOIS botões do ReportButton quando renderizados na stack */
+.actions-stack .w-full > a,
+.actions-stack .w-full > button {
+  width: 100%;
+}
+.actions-stack .w-full > a + a,
+.actions-stack .w-full > a + button,
+.actions-stack .w-full > button + a,
+.actions-stack .w-full > button + button {
+  margin-top: 0.75rem;        /* ~mt-3 */
+}

@@ -42,7 +42,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <p className="text-gray-600 mb-4">Use os atalhos abaixo para gerenciar a turma.</p>
 
           {/* ===== Stack vertical centralizada ===== */}
-          <div className="actions-stack flex flex-col items-center gap-3">
+          <div className="actions-stack flex flex-col items-stretch gap-3">
             <Link
               href={`/classes/${cls.id}/chamadas`}
               className="bg-[#0A66FF] text-white shadow hover:opacity-90"
