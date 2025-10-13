@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
+type RankRow = { name: string; faltas: number };
+
 export default function ReportButton({ classId, className }:{ classId:string; className:string }) {
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState("");
@@ -38,29 +40,32 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       // alunos
       const stRes = await fetch(`/api/classes/${classId}/students`, { cache:"no-store" });
       const stData = await stRes.json().catch(()=> ({}));
-      const students = (stRes.ok && stData?.ok && Array.isArray(stData.students)) ? stData.students : [];
+      const students: Array<{ id:string; name:string }> =
+        (stRes.ok && stData?.ok && Array.isArray(stData.students)) ? stData.students : [];
 
       // chamadas
       const chRes = await fetch(`/api/classes/${classId}/chamadas?order=asc`, { cache:"no-store" });
       const chData = await chRes.json().catch(()=> ({}));
-      const chamadas = (chRes.ok && chData?.ok && Array.isArray(chData.attendances)) ? chData.attendances : [];
+      const chamadas: Array<{ seq:number; createdAt:string }> =
+        (chRes.ok && chData?.ok && Array.isArray(chData.attendances)) ? chData.attendances : [];
 
       const onlyDate = (iso:string) => (iso||"").slice(0,10);
-      const periodChamadas = chamadas.filter((c:any) => {
+      const periodChamadas = chamadas.filter((c) => {
         const d = onlyDate(c.createdAt);
         return d && d >= start && d <= end;
       });
-      const seqs:number[] = periodChamadas.map((c:any) => c.seq);
+      const seqs:number[] = periodChamadas.map((c) => c.seq);
 
       // presenças
       const presenceBySeq: Record<number, Record<string, boolean>> = {};
       for (const seq of seqs) {
         const prRes = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache:"no-store" });
         const prData = await prRes.json().catch(()=> ({}));
-        const rows = (prRes.ok && prData?.ok && Array.isArray(prData.rows)) ? prData.rows : [];
+        const rows: Array<{ studentId:string; present:boolean }> =
+          (prRes.ok && prData?.ok && Array.isArray(prData.rows)) ? prData.rows : [];
         const map: Record<string, boolean> = {};
         for (const r of rows) map[r.studentId] = !!r.present;
-        students.forEach((s:any)=> { if (!(s.id in map)) map[s.id] = false; });
+        students.forEach((s)=> { if (!(s.id in map)) map[s.id] = false; });
         presenceBySeq[seq] = map;
       }
 
@@ -68,12 +73,12 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       const totalAlunos = students.length;
       let somaPresentes = 0;
       const faltas = new Map<string, number>();
-      students.forEach((s:any)=> faltas.set(s.id, 0));
+      students.forEach((s)=> faltas.set(s.id, 0));
 
       for (const seq of seqs) {
         const pres = presenceBySeq[seq] || {};
         let presentes = 0;
-        students.forEach((s:any)=>{
+        students.forEach((s)=>{
           if (pres[s.id]) presentes++;
           else faltas.set(s.id, (faltas.get(s.id) || 0) + 1);
         });
@@ -84,9 +89,9 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       const mediaPresentesAbs = totalAulas ? Math.round((somaPresentes/totalAulas)*100)/100 : 0;
       const mediaPercentual = (totalAulas && totalAlunos) ? Math.round((mediaPresentesAbs/totalAlunos)*10000)/100 : 0;
 
-      const ranking = students
-        .map((s:any)=> ({ name:s.name, faltas: faltas.get(s.id) || 0 }))
-        .sort((a,b)=> b.faltas - a.faltas);
+      const ranking: RankRow[] = students
+        .map<RankRow>((s)=> ({ name:s.name, faltas: faltas.get(s.id) || 0 }))
+        .sort((a:RankRow, b:RankRow) => b.faltas - a.faltas);
 
       // PDF
       // @ts-ignore
