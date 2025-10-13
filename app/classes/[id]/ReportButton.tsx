@@ -117,9 +117,9 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
     setBusy(true);
     try {
       await ensureJsPdf();
-      const res = await fetch(`/api/classes/${classId}/conteudos`, { cache:"no-store" });
+      const res = await fetch(`/api/classes/${classId}/conteudos/full`, { cache:"no-store" });
       const data = await res.json().catch(()=> ({}));
-      const list: Array<{ seq:number; title:string }> =
+      const list: Array<{ seq:number; title:string; bodyHtml?:string|null }> =
         (res.ok && data?.ok && Array.isArray(data.list)) ? data.list : [];
 
       // PDF
@@ -135,8 +135,15 @@ export default function ReportButton({ classId, className }:{ classId:string; cl
       list.forEach((c)=>{
         if (y > 700) { doc.addPage(); y = margin; }
         doc.setFont("helvetica","bold"); doc.setFontSize(12);
-        doc.text(`${c.seq} — ${c.title}`, margin, y); y+=18;
-        doc.setFont("helvetica","normal"); doc.setFontSize(10);
+        doc.text(`${c.seq} — ${c.title}`, margin, y); y+=16;
+        if (c.bodyHtml) {
+          const tmp = document.createElement("div");
+          tmp.innerHTML = c.bodyHtml;
+          const plain = tmp.innerText;
+          const lines = doc.splitTextToSize(plain, 520);
+          doc.setFont("helvetica","normal"); doc.setFontSize(10);
+          doc.text(lines, margin, y); y += lines.length*12 + 8;
+        }
         doc.text("────────────────────────────────────────", margin, y); y+=14;
       });
 
