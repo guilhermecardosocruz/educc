@@ -18,7 +18,7 @@ export default async function ChamadaPage({ params }: { params: Promise<{ id: st
   // dados iniciais para preencher o client
   const attendance = await prisma.attendance.findUnique({
     where: { classId_seq: { classId: id, seq: Number(seq) } },
-    select: { seq: true, title: true }
+    select: { seq: true, title: true, lessonDate: true }
   });
   if (!attendance) notFound();
 
@@ -35,5 +35,15 @@ export default async function ChamadaPage({ params }: { params: Promise<{ id: st
     select: { studentId: true, present: true }
   });
   const initialPresence = Object.fromEntries(presences.map(r => [r.studentId, !!r.present]));
-  return <ChamadaClient classId={cls.id} className={cls.name} seq={attendance.seq} initialTitle={attendance.title} initialStudents={students} initialPresence={initialPresence}  />;
-}
+  const initialLessonDate = attendance.lessonDate ? new Date(attendance.lessonDate).toISOString().slice(0,10) : "";
+  return (
+    <ChamadaClient
+      classId={cls.id}
+      className={cls.name}
+      seq={attendance.seq}
+      initialTitle={attendance.title}
+      initialStudents={students}
+      initialPresence={initialPresence}
+      initialLessonDate={initialLessonDate}
+    />
+  );

@@ -11,6 +11,13 @@ export default function NewCallPage() {
   const { id } = useParams<{ id: string }>();
 
   const [title, setTitle] = useState("");
+  const [lessonDate, setLessonDate] = useState<string>(() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
   const [students, setStudents] = useState<Student[]>([]);
   const [presence, setPresence] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -185,7 +192,7 @@ export default function NewCallPage() {
       const res = await fetch(`/api/classes/${id}/chamadas`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: title.trim() || undefined })
+        body: JSON.stringify({ title: title.trim() || undefined, lessonDate: lessonDate || undefined })
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);

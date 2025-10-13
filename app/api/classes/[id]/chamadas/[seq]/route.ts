@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { z } from "zod";
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
   const { id, seq } = await ctx.params;
@@ -33,4 +34,36 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string;
       return NextResponse.json({ ok: false, error: "Erro ao excluir chamada" }, { status: 500 });
     }
   }
+}
+const updateSchema = z.object({
+  lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
+
+export async function PUT(req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+  const { id, seq } = await ctx.params;
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+
+  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+  if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
+
+  const seqNum = Number(seq);
+  if (!Number.isFinite(seqNum)) return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+
+  const body = await req.json().catch(() => ({}));
+  const parsed = updateSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+
+  const updateData: any = {};
+  if (parsed.data.lessonDate) {
+    updateData.lessonDate = new Date(parsed.data.lessonDate + 'T00:00:00.000Z');
+  }
+  if (!Object.keys(updateData).length) return NextResponse.json({ ok: true, updated: 0 });
+
+  await prisma.attendance.update({
+    where: { classId_seq: { classId: id, seq: seqNum } as any },
+    data: updateData
+  });
+
+  return NextResponse.json({ ok: true, updated: 1 });
 }

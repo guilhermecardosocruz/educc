@@ -5,6 +5,8 @@ import { z } from "zod";
 
 const createSchema = z.object({
   title: z.string().trim().min(1).max(100).optional().default("Chamada")
+  ,
+  lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() // YYYY-MM-DD
 });
 
 // GET: lista chamadas (order por seq)
@@ -49,9 +51,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
     const nextSeq = (last?.seq ?? 0) + 1;
 
+    // data editável (UTC 00:00) — hoje por padrão
+    const __now = new Date();
+    const __todayUTC = new Date(Date.UTC(__now.getUTCFullYear(), __now.getUTCMonth(), __now.getUTCDate()));
+    const lessonDate = (parsed.data.lessonDate ? new Date(parsed.data.lessonDate + 'T00:00:00.000Z') : __todayUTC);
+
     const attendance = await tx.attendance.create({
-      data: { classId: id, seq: nextSeq, title: parsed.data.title || `Chamada ${nextSeq}` },
-      select: { id: true, seq: true, title: true, createdAt: true }
+      data: { classId: id, seq: nextSeq, title: parsed.data.title || `Chamada ${nextSeq}` },,
+        lessonDate
+      select: { id: true, seq: true, title: true, createdAt: true , lessonDate: true }
     });
 
     // garante conteúdo com mesmo seq (se não existir)

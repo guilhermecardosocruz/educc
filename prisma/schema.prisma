@@ -51,6 +51,7 @@ model Attendance {
   seq       Int
   title     String   @default("Chamada")
   createdAt DateTime @default(now())
+  lessonDate DateTime?   // data editável da aula (UTC, opcional)
 
   @@unique([classId, seq])
 }

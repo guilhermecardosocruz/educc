@@ -11,18 +11,24 @@ export default function EditChamadaClient({
   className,
   seq,
   initialTitle,
-  initialStudents
-}: {
+  initialStudents,
+  initialPresence,
+  initialLessonDate
+} : {
   classId: string;
   className: string;
   seq: number;
   initialTitle: string;
-  initialStudents: Student[]; initialPresence?: Record<string, boolean>; }) {
+  initialStudents: Student[];
+  initialPresence?: Record<string, boolean>;
+  initialLessonDate?: string; // YYYY-MM-DD
+}) {
   const router = useRouter();
 
   const [title, setTitle] = useState(initialTitle || "");
   const [students, setStudents] = useState<Student[]>(initialStudents || []);
   const [presence, setPresence] = useState<Record<string, boolean>>({});
+  const [lessonDate, setLessonDate] = useState<string>(initialLessonDate || "");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -48,6 +54,14 @@ export default function EditChamadaClient({
       try {
         const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
         if (!res.ok) throw new Error();
+      // Atualiza data (idempotente se vazio)
+      const res2 = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lessonDate: lessonDate || undefined })
+      });
+      const d2 = await res2.json().catch(() => ({}));
+      if (!res2.ok || d2?.ok === false) throw new Error(d2?.error || "Falha ao atualizar data");
         const data = await res.json();
         const map: Record<string, boolean> = {};
         if (Array.isArray(data?.rows)) {
