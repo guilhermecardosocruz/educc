@@ -1,38 +1,174 @@
-app
-app/api
-app/api/auth
-app/api/auth/login
-app/api/auth/logout
-app/api/auth/me
-app/api/auth/recover-email
-app/api/auth/register
-app/api/classes
-app/api/classes/[id]
-app/api/classes/[id]/chamadas
-app/api/classes/[id]/chamadas/[seq]
-app/api/classes/[id]/chamadas/[seq]/presences
-app/api/classes/[id]/conteudos
-app/api/classes/[id]/conteudos/import
-app/api/classes/[id]/conteudos/[seq]
-app/api/classes/[id]/students
-app/api/classes/[id]/students/import
-app/api/classes/[id]/students/[studentId]
-app/api/images
-app/api/images/generate
-app/(auth)
-app/(auth)/login
-app/(auth)/recover
-app/(auth)/recover-email
-app/(auth)/register
-app/classes
-app/classes/[id]
-app/classes/[id]/chamadas
-app/classes/[id]/chamadas/new
-app/classes/[id]/chamadas/[seq]
-app/classes/[id]/conteudos
-app/classes/[id]/conteudos/import
-app/classes/[id]/conteudos/new
-app/classes/[id]/conteudos/[seq]
-app/dashboard
-app/manifest.webmanifest
-app/offline
+./
+├── app/
+│   ├── api/
+│   │   ├── auth/
+│   │   │   ├── login/
+│   │   │   │   └── route.ts
+│   │   │   ├── logout/
+│   │   │   │   └── route.ts
+│   │   │   ├── me/
+│   │   │   │   └── route.ts
+│   │   │   ├── recover-email/
+│   │   │   │   └── route.ts
+│   │   │   └── register/
+│   │   │       └── route.ts
+│   │   ├── classes/
+│   │   │   ├── [id]/
+│   │   │   │   ├── chamadas/
+│   │   │   │   │   ├── route.ts
+│   │   │   │   │   └── [seq]/
+│   │   │   │   │       ├── presences/
+│   │   │   │   │       │   └── route.ts
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── conteudos/
+│   │   │   │   │   ├── import/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── route.ts
+│   │   │   │   │   └── [seq]/
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── route.ts
+│   │   │   │   └── students/
+│   │   │   │       ├── import/
+│   │   │   │       │   └── route.ts
+│   │   │   │       ├── route.ts
+│   │   │   │       └── [studentId]/
+│   │   │   │           └── route.ts
+│   │   │   └── route.ts
+│   │   └── images/
+│   │       └── generate/
+│   │           └── route.ts
+│   ├── (auth)/
+│   │   ├── login/
+│   │   │   └── page.tsx
+│   │   ├── recover/
+│   │   │   └── page.tsx
+│   │   ├── recover-email/
+│   │   │   └── page.tsx
+│   │   └── register/
+│   │       └── page.tsx
+│   ├── classes/
+│   │   └── [id]/
+│   │       ├── chamadas/
+│   │       │   ├── new/
+│   │       │   │   └── page.tsx
+│   │       │   ├── page.tsx
+│   │       │   ├── [seq]/
+│   │       │   │   ├── page.tsx
+│   │       │   │   └── ui.tsx
+│   │       │   └── ui.tsx
+│   │       ├── conteudos/
+│   │       │   ├── import/
+│   │       │   │   ├── ImportContentsClient.tsx
+│   │       │   │   ├── page.tsx
+│   │       │   │   ├── page.tsx.bak_1760242718
+│   │       │   │   ├── page.tsx.bak_1760242747
+│   │       │   │   ├── ui.tsx
+│   │       │   │   ├── ui.tsx.bak_1760242718
+│   │       │   │   └── ui.tsx.bak_1760242747
+│   │       │   ├── List.tsx
+│   │       │   ├── new/
+│   │       │   │   ├── ImportStudentsClient.tsx
+│   │       │   │   ├── page.tsx
+│   │       │   │   └── ui.tsx
+│   │       │   ├── page.tsx
+│   │       │   ├── [seq]/
+│   │       │   │   └── page.tsx
+│   │       │   └── ui.tsx
+│   │       ├── page.tsx
+│   │       └── StudentsPanel.tsx
+│   ├── dashboard/
+│   │   └── page.tsx
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── manifest.webmanifest/
+│   │   └── route.ts
+│   ├── metadata.ts
+│   ├── offline/
+│   │   └── page.tsx
+│   └── page.tsx
+├── backups/
+│   ├── for-gpt/
+│   │   ├── API.txt
+│   │   ├── BUG_IMPORT_DEBUG.txt
+│   │   ├── chamada-seq-ui.tsx.20251009-162019.bak
+│   │   ├── chamada-seq-ui.tsx.20251009-162334.bak
+│   │   ├── chamadas-new-page.tsx.20251009-150218.bak
+│   │   ├── chamadas-new-page.tsx.20251009-151651.bak
+│   │   ├── chamadas-new-page.tsx.20251009-154244.bak
+│   │   ├── chamadas-new-page.tsx.20251009-155440.bak
+│   │   ├── chamadas-new-page.tsx.20251009-160146.bak
+│   │   ├── chamadas-new-page.tsx.20251009-161228.bak
+│   │   ├── COMPONENTS_TSX.txt
+│   │   ├── conteudos-import-page.tsx.20251010-024639.bak
+│   │   ├── conteudos-new-page.tsx.20251010-024735.bak
+│   │   ├── conteudos-page.tsx.20251010-015202.bak
+│   │   ├── EDIT_CORE_APP.txt
+│   │   ├── INDEX.txt
+│   │   ├── move-date-below-title.patch
+│   │   ├── presences-route.ts.20251009-152133.bak
+│   │   ├── presences-route.ts.20251009-152309.bak
+│   │   ├── PROJECT_NO_SVG.txt
+│   │   ├── PROJECT_TS.txt
+│   │   ├── ROTAS.txt
+│   │   ├── schema.prisma.20251009-145922.bak
+│   │   ├── schema.prisma.20251009-150035.bak
+│   │   ├── schema.prisma.20251009-161505.bak
+│   │   ├── schema.prisma.20251009-161840.bak
+│   │   ├── students-route.ts.20251009-161006.bak
+│   │   ├── students-route.ts.20251009-161554.bak
+│   │   └── TREE.txt
+│   └── pre-fix/
+├── components/
+│   ├── DevSwKiller.tsx
+│   └── LoginCard.tsx
+├── .env.local
+├── eslint.config.mjs
+├── .gitignore
+├── lib/
+│   ├── email.ts
+│   ├── prisma.ts
+│   └── session.ts
+├── middleware.ts
+├── next.config.js
+├── next.config.mjs
+├── next.config.ts
+├── next-env.d.ts
+├── package.json
+├── pnpm-builds.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── postcss.config.cjs
+├── postcss.config.mjs
+├── prisma/
+│   └── schema.prisma
+├── public/
+│   ├── fallback-0eTozR3nWhBheLq0CSgFt.js
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── icons/
+│   │   ├── icon-192.png
+│   │   ├── icon-512.png
+│   │   └── maskable-512.png
+│   ├── manifest.json
+│   ├── next.svg
+│   ├── sw.js
+│   ├── templates/
+│   │   ├── contents.csv
+│   │   ├── CONTENTS_README.txt
+│   │   ├── contents.xlsx
+│   │   ├── README.txt
+│   │   ├── students.csv
+│   │   └── students.xlsx
+│   ├── vercel.svg
+│   ├── window.svg
+│   └── workbox-e1521e97.js
+├── README.md
+├── scripts/
+│   └── regenerate-contents-xlsx.mjs
+├── styles/
+│   └── globals.css
+├── tsconfig.json
+└── tsconfig.tsbuildinfo
+
+49 directories, 122 files
