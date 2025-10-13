@@ -24,3 +24,17 @@ html, body { height: 100%; }
   border-radius: calc(var(--radius-xl) * 1.333);
   box-shadow: var(--shadow-card);
 }
+
+/* ===== Stack de ações da turma (botões grandes em coluna) ===== */
+.actions-stack { 
+  max-width: 28rem;        /* ~448px */
+  margin-inline: auto; 
+}
+.actions-stack a,
+.actions-stack button {
+  width: 100%;
+  text-align: center;
+  padding: 0.875rem 1rem;  /* ~py-3.5 */
+  font-size: 1rem;         /* text-base */
+  border-radius: 0.75rem;  /* rounded-xl */
+}
