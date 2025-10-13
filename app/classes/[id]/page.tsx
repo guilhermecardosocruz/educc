@@ -40,25 +40,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-2 text-gray-900">Ações</h2>
           <p className="text-gray-600 mb-4">Use os atalhos abaixo para gerenciar a turma.</p>
-          <div className="flex flex-wrap gap-2">
+
+          {/* ===== Stack vertical centralizada ===== */}
+          <div className="actions-stack flex flex-col items-center gap-3">
             <Link
               href={`/classes/${cls.id}/chamadas`}
-              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90"
+              className="bg-[#0A66FF] text-white shadow hover:opacity-90"
             >
               Ir para Chamadas
             </Link>
+
             <Link
               href={`/classes/${cls.id}/conteudos`}
-              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+              className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
             >
               Ver Conteúdos
             </Link>
-            {/* 🔹 Botão/Modal/PDF */}
-            <ReportButton classId={cls.id} className={cls.name} />
-            {/* 🔹 Ajuda com IA */}
+
+            {/* 🔹 Os botões internos do ReportButton também ficam 100% via .actions-stack */}
+            <div className="w-full">
+              <ReportButton classId={cls.id} className={cls.name} />
+            </div>
+
             <Link
               href={`/classes/${cls.id}/ai-help`}
-              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+              className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
             >
               Ajuda com IA
             </Link>
