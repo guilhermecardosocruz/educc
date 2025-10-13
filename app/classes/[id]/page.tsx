@@ -53,8 +53,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             >
               Ver Conteúdos
             </Link>
-            {/* 🔹 Botão/Modal/PDF (client component interno) */}
+            {/* 🔹 Botão/Modal/PDF */}
             <ReportButton classId={cls.id} className={cls.name} />
+            {/* 🔹 Ajuda com IA */}
+            <Link
+              href={`/classes/${cls.id}/ai-help`}
+              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+            >
+              Ajuda com IA
+            </Link>
           </div>
         </div>
       </section>
