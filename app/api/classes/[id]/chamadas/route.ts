@@ -57,11 +57,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const lessonDate = (parsed.data.lessonDate ? new Date(parsed.data.lessonDate + 'T00:00:00.000Z') : __todayUTC);
 
     const attendance = await tx.attendance.create({
-      data: { classId: id, seq: nextSeq, title: parsed.data.title || `Chamada ${nextSeq}` },,
+      data: {
+        classId: id,
+        seq: nextSeq,
+        title: parsed.data.title || `Chamada ${nextSeq}`,
         lessonDate
-      select: { id: true, seq: true, title: true, createdAt: true , lessonDate: true }
+      },
+      select: { id: true, seq: true, title: true, createdAt: true, lessonDate: true }
     });
-
     // garante conteúdo com mesmo seq (se não existir)
     await tx.content.upsert({
       where: { classId_seq: { classId: id, seq: nextSeq } },

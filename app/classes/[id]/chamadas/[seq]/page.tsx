@@ -47,3 +47,5 @@ export default async function ChamadaPage({ params }: { params: Promise<{ id: st
       initialLessonDate={initialLessonDate}
     />
   );
+
+}
