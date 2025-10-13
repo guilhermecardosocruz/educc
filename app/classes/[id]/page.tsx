@@ -52,6 +52,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             >
               Ver Conteúdos
             </Link>
+            {/* 🔹 Novo: botão de relatório (PDF) — sem alterar outras partes */}
+            <Link
+              href={`/classes/${cls.id}/chamadas?report=pdf`}
+              className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+              title="Gerar relatório de presenças (PDF) por período"
+            >
+              Relatório (PDF)
+            </Link>
           </div>
         </div>
       </section>
