@@ -69,7 +69,7 @@ export default function RecoverEmailPage() {
                 <input
                     className="input"
                     type="email"
-                    placeholder="exemplo.com"
+                    placeholder="exemplo@email.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required

@@ -160,7 +160,7 @@ export default function RegisterPage() {
                 inputMode="numeric"
                 placeholder="000.000.000-00"
                 value={form.cpf}
-                onChange={(e)=> update("cpf", maskCPF(e.target.value))}
+                onChange={(e) => update("cpf", maskCPF(e.target.value))}
                 maxLength={14}                             
                 required
                 pattern="^\d{3}\.\d{3}\.\d{3}-\d{2}$"
@@ -186,9 +186,9 @@ export default function RegisterPage() {
               <input
                 className="input"
                 type="email"
-                placeholder="exemplo.com"
+                placeholder="exemplo@email.com"
                 value={form.email}
-                onChange={(e)=> update("email", e.target.value.trim())}
+                onChange={(e) => update("email", e.target.value.trim())}
                 required
                 autoComplete="email"
               />
@@ -202,7 +202,7 @@ export default function RegisterPage() {
                 inputMode="tel"
                 placeholder="(00) 00000-0000"
                 value={form.phone}
-                onChange={(e)=> update("phone", maskPhoneBR(e.target.value))}
+                onChange={(e) => update("phone", maskPhoneBR(e.target.value))}
                 maxLength={15}
                 required
                 pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"
