@@ -186,7 +186,7 @@ export default function RegisterPage() {
               <input
                 className="input"
                 type="email"
-                placeholder="voce@exemplo.com"
+                placeholder="exemplo.com"
                 value={form.email}
                 onChange={(e)=> update("email", e.target.value.trim())}
                 required
