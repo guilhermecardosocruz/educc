@@ -56,8 +56,7 @@ export default function AiHelpClient({ classId }: { classId: string }) {
         if (res.ok && data?.ok && data.content) {
           setSelectedContent(data.content as ContentFull);
         }
-      } catch (e) {
-      }
+      } catch (e) {}
     })();
   }, [classId, selectedSeq]);
 
@@ -84,10 +83,8 @@ export default function AiHelpClient({ classId }: { classId: string }) {
     setBusy(true);
     try {
       const topic = selectedContent?.title || `Conteúdo ${selectedSeq}`;
-      const ctx = contextSummary;
       const opts = mockThreeSuggestions(topic, problem.trim());
-      // simulação de “latência”
-      await new Promise(r => setTimeout(r, 350));
+      await new Promise(r => setTimeout(r, 350)); // simulação
       setOptions(opts);
     } finally {
       setBusy(false);
@@ -107,12 +104,6 @@ export default function AiHelpClient({ classId }: { classId: string }) {
     navigator.clipboard.writeText(text).then(() => {
       alert("Pedido copiado para a área de transferência.");
     });
-  }
-
-  function openWhatsApp() {
-    const text = buildPrompt() + (options.length ? `\n\nSugestões geradas localmente:\n- ${options.join("\n- ")}` : "");
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, "_blank");
   }
 
   return (
@@ -170,14 +161,6 @@ export default function AiHelpClient({ classId }: { classId: string }) {
               className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
             >
               Copiar pedido (prompt)
-            </button>
-
-            <button
-              onClick={openWhatsApp}
-              className="rounded-xl border px-4 py-2 text-sm font-medium hover:border-green-400 hover:text-green-700"
-              title="Abre o WhatsApp com a mensagem pronta"
-            >
-              Abrir no WhatsApp
             </button>
           </div>
 
