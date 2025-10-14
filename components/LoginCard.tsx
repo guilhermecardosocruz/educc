@@ -54,7 +54,7 @@ export default function LoginCard() {
           <input
             className="input"
             type="email"
-            placeholder="voce.com"
+            placeholder="exemplo.com"
             value={email}
             onChange={(e) => setEmailOrCpf(e.target.value)}
             required
