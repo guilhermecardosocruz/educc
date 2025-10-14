@@ -5,13 +5,11 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
 const schema = z.object({
-  emailOrCpf: z.string().min(3),
+  email: z.string().email(),
   password: z.string().min(8)
 });
 
 const COOKIE_NAME = "session_user_id";
-
-function onlyDigits(s: string){ return s.replace(/\D+/g, ""); }
 
 export async function POST(req: Request) {
   try {
@@ -20,12 +18,9 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
     }
-    const { emailOrCpf, password } = parsed.data;
+    const { email, password } = parsed.data;
 
-    const byEmail = emailOrCpf.includes("@");
-    const where = byEmail
-      ? { email: emailOrCpf.toLowerCase() }
-      : { cpf: onlyDigits(emailOrCpf) };
+    const where = { email: email.toLowerCase() };
 
     const user = await prisma.user.findUnique({
       where,
