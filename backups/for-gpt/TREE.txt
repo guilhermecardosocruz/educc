@@ -21,6 +21,8 @@
 │   │   │   │   │       │   └── route.ts
 │   │   │   │   │       └── route.ts
 │   │   │   │   ├── conteudos/
+│   │   │   │   │   ├── full/
+│   │   │   │   │   │   └── route.ts
 │   │   │   │   │   ├── import/
 │   │   │   │   │   │   └── route.ts
 │   │   │   │   │   ├── route.ts
@@ -48,6 +50,9 @@
 │   │       └── page.tsx
 │   ├── classes/
 │   │   └── [id]/
+│   │       ├── ai-help/
+│   │       │   ├── Client.tsx
+│   │       │   └── page.tsx
 │   │       ├── chamadas/
 │   │       │   ├── new/
 │   │       │   │   └── page.tsx
@@ -75,6 +80,7 @@
 │   │       │   │   └── page.tsx
 │   │       │   └── ui.tsx
 │   │       ├── page.tsx
+│   │       ├── ReportButton.tsx
 │   │       └── StudentsPanel.tsx
 │   ├── dashboard/
 │   │   └── page.tsx
@@ -91,19 +97,30 @@
 │   ├── for-gpt/
 │   │   ├── API.txt
 │   │   ├── BUG_IMPORT_DEBUG.txt
+│   │   ├── CHAMADAS_EDIT_FULL.txt
+│   │   ├── CHAMADAS_EDIT.txt
 │   │   ├── chamada-seq-ui.tsx.20251009-162019.bak
 │   │   ├── chamada-seq-ui.tsx.20251009-162334.bak
+│   │   ├── chamadas-new-page.20251013-020251.bak
 │   │   ├── chamadas-new-page.tsx.20251009-150218.bak
 │   │   ├── chamadas-new-page.tsx.20251009-151651.bak
 │   │   ├── chamadas-new-page.tsx.20251009-154244.bak
 │   │   ├── chamadas-new-page.tsx.20251009-155440.bak
 │   │   ├── chamadas-new-page.tsx.20251009-160146.bak
 │   │   ├── chamadas-new-page.tsx.20251009-161228.bak
+│   │   ├── chamadas-route.post.20251013-020251.bak
+│   │   ├── chamadas-route.post.fix1.bak
+│   │   ├── chamadas-route.post.fix2.bak
+│   │   ├── chamadas-seq-page.20251013-020251.bak
+│   │   ├── chamadas-seq-route.20251013-020251.bak
+│   │   ├── chamadas-seq-ui.20251013-020251.bak
 │   │   ├── COMPONENTS_TSX.txt
+│   │   ├── CONTENTS_EDIT.txt
 │   │   ├── conteudos-import-page.tsx.20251010-024639.bak
 │   │   ├── conteudos-new-page.tsx.20251010-024735.bak
 │   │   ├── conteudos-page.tsx.20251010-015202.bak
 │   │   ├── EDIT_CORE_APP.txt
+│   │   ├── .env.local.bak
 │   │   ├── INDEX.txt
 │   │   ├── move-date-below-title.patch
 │   │   ├── presences-route.ts.20251009-152133.bak
@@ -115,6 +132,7 @@
 │   │   ├── schema.prisma.20251009-150035.bak
 │   │   ├── schema.prisma.20251009-161505.bak
 │   │   ├── schema.prisma.20251009-161840.bak
+│   │   ├── schema.prisma.20251013-020251.bak
 │   │   ├── students-route.ts.20251009-161006.bak
 │   │   ├── students-route.ts.20251009-161554.bak
 │   │   └── TREE.txt
@@ -122,6 +140,7 @@
 ├── components/
 │   ├── DevSwKiller.tsx
 │   └── LoginCard.tsx
+├── .env
 ├── .env.local
 ├── eslint.config.mjs
 ├── .gitignore
@@ -141,9 +160,13 @@
 ├── postcss.config.cjs
 ├── postcss.config.mjs
 ├── prisma/
+│   ├── migrations/
+│   │   ├── 20251013051725_init_with_lesson_date/
+│   │   │   └── migration.sql
+│   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
-│   ├── fallback-0eTozR3nWhBheLq0CSgFt.js
+│   ├── fallback-wU3T6C_KC3TVLYdfMBN7l.js
 │   ├── file.svg
 │   ├── globe.svg
 │   ├── icons/
@@ -171,4 +194,4 @@
 ├── tsconfig.json
 └── tsconfig.tsbuildinfo
 
-49 directories, 122 files
+53 directories, 141 files
