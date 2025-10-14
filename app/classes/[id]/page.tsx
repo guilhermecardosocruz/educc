@@ -54,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               href={`/classes/${cls.id}/conteudos`}
               className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
             >
-              Ver Conteúdos
+              Ir para Conteúdos
             </Link>
 
             {/* 🔹 Os botões internos do ReportButton também ficam 100% via .actions-stack */}
