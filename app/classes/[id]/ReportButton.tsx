@@ -300,7 +300,7 @@ export default function ReportButton({ classId, className }: { classId: string; 
 
       <button
         type="button"
-        className="ml-2 rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+        className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
         onClick={() => setOpen("contents")}
       >
         Conteúdos em PDF
