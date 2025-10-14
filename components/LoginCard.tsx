@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function LoginCard() {
   const router = useRouter();
-  const [emailOrCpf, setEmailOrCpf] = useState("");
+  const [email, setEmailOrCpf] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export default function LoginCard() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ emailOrCpf, password })
+        body: JSON.stringify({ email, password })
       });
       const data = await res.json().catch(()=> ({}));
       if (!res.ok || !data?.ok) {
@@ -50,12 +50,12 @@ export default function LoginCard() {
 
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm mb-1">E-mail ou CPF</label>
+          <label className="block text-sm mb-1">E-mail</label>
           <input
             className="input"
-            type="text"
-            placeholder="voce@exemplo.com ou 000.000.000-00"
-            value={emailOrCpf}
+            type="email"
+            placeholder="voce.com"
+            value={email}
             onChange={(e) => setEmailOrCpf(e.target.value)}
             required
           />
