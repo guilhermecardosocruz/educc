@@ -1,4 +1,5 @@
 import LoginCard from "@/components/LoginCard";
+export const dynamic = "force-dynamic";
 
 export default function Home() {
   return (

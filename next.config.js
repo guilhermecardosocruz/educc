@@ -32,5 +32,5 @@ export default withPWA({
   register: true,
   skipWaiting: true,
   runtimeCaching,
-  fallbacks: { document: "/offline.html" }
+  fallbacks: { document: "/offline" }
 })(baseConfig);
