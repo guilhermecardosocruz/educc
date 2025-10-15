@@ -9,8 +9,17 @@ type LinkRow = {
   createdBy: string;
 };
 
-export default function ShareClassModal({ classId }: { classId: string }) {
-  const [open, setOpen] = useState(false);
+type Props = {
+  classId: string;
+  open?: boolean; // controle externo (opcional)
+  onOpenChange?: (v: boolean) => void; // callback opcional
+};
+
+export default function ShareClassModal({ classId, open: openProp, onOpenChange }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+
   const [loading, setLoading] = useState(false);
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -37,6 +46,7 @@ export default function ShareClassModal({ classId }: { classId: string }) {
 
   useEffect(() => {
     if (open) loadLinks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   async function createLink(role: "PROFESSOR" | "GESTOR") {
@@ -91,20 +101,21 @@ export default function ShareClassModal({ classId }: { classId: string }) {
 
   return (
     <>
-      {/* Botão compacto com ícone (sem texto) */}
-      <button
-        type="button"
-        className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50"
-        onClick={() => setOpen(true)}
-        aria-label="Compartilhar turma"
-        title="Compartilhar"
-      >
-        {/* ícone share (inline SVG, 20x20) */}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M16 6a3 3 0 1 0-2.83-4H13a3 3 0 0 0 3 4Z" fill="currentColor" opacity=".15"/>
-          <path d="M18 8a3 3 0 1 0-2.83-4M6 14a3 3 0 1 0 2.83 4M6 14l9-5M8.83 18l7.34 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
+      {/* Botão de abertura só aparece se NÃO for controlado externamente */}
+      {openProp === undefined && (
+        <button
+          type="button"
+          className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50"
+          onClick={() => setOpen(true)}
+          aria-label="Compartilhar turma"
+          title="Compartilhar"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M16 6a3 3 0 1 0-2.83-4H13a3 3 0 0 0 3 4Z" fill="currentColor" opacity=".15"/>
+            <path d="M18 8a3 3 0 1 0-2.83-4M6 14a3 3 0 1 0 2.83 4M6 14l9-5M8.83 18l7.34 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50">
