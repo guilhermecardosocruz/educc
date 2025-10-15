@@ -1,19 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 
-type LinkRow = {
-  id: string;
-  token: string;
-  role: "PROFESSOR" | "GESTOR";
-  createdAt: string;
-  createdBy: string;
-};
-
-type Props = {
-  classId: string;
-  open?: boolean; // controle externo (opcional)
-  onOpenChange?: (v: boolean) => void; // callback opcional
-};
+type LinkRow = { id: string; token: string; role: "PROFESSOR" | "GESTOR"; createdAt: string; createdBy: string; };
+type Props = { classId: string; open?: boolean; onOpenChange?: (v: boolean) => void; };
 
 export default function ShareClassModal({ classId, open: openProp, onOpenChange }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -24,91 +13,63 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
-  // convite por e-mail
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"PROFESSOR" | "GESTOR">("GESTOR");
 
   async function loadLinks() {
-    setLoading(true);
-    setErr(null);
+    setLoading(true); setErr(null);
     try {
       const res = await fetch(`/api/classes/${classId}/access/links`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao listar links");
       setLinks(data.links || []);
-    } catch (e: any) {
-      setErr(e.message || "Erro ao carregar links");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setErr(e.message || "Erro ao carregar links"); }
+    finally { setLoading(false); }
   }
 
-  useEffect(() => {
-    if (open) loadLinks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  useEffect(() => { if (open) loadLinks(); }, [open]);
 
   async function createLink(role: "PROFESSOR" | "GESTOR") {
-    setLoading(true);
-    setMsg(null); setErr(null);
+    setLoading(true); setMsg(null); setErr(null);
     try {
       const res = await fetch(`/api/classes/${classId}/access/links`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ role })
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role })
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao criar link");
       setMsg(role === "PROFESSOR" ? "Link de professor criado!" : "Link de gestor criado!");
       await loadLinks();
-    } catch (e: any) {
-      setErr(e.message || "Erro ao criar link");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setErr(e.message || "Erro ao criar link"); }
+    finally { setLoading(false); }
   }
 
   async function copyLink(token: string) {
     const url = `${window.location.origin}/share/${token}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setMsg("Link copiado!");
-    } catch {
-      setErr("Não consegui copiar — copie manualmente:");
-    }
+    try { await navigator.clipboard.writeText(url); setMsg("Link copiado!"); }
+    catch { setErr("Não consegui copiar — copie manualmente:"); }
   }
 
   async function inviteByEmail() {
-    setLoading(true);
-    setMsg(null); setErr(null);
+    setLoading(true); setMsg(null); setErr(null);
     try {
       const res = await fetch(`/api/classes/${classId}/access/members`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, role: inviteRole })
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, role: inviteRole })
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao convidar");
-      setMsg(`Acesso concedido a ${email} como ${inviteRole}.`);
-      setEmail("");
-    } catch (e: any) {
-      setErr(e.message || "Erro ao convidar");
-    } finally {
-      setLoading(false);
-    }
+      setMsg(`Acesso concedido a ${email} como ${inviteRole}.`); setEmail("");
+    } catch (e: any) { setErr(e.message || "Erro ao convidar"); }
+    finally { setLoading(false); }
   }
 
   return (
     <>
-      {/* Botão de abertura só aparece se NÃO for controlado externamente */}
       {openProp === undefined && (
         <button
           type="button"
           className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50"
           onClick={() => setOpen(true)}
-          aria-label="Compartilhar turma"
-          title="Compartilhar"
+          aria-label="Compartilhar turma" title="Compartilhar"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M16 6a3 3 0 1 0-2.83-4H13a3 3 0 0 0 3 4Z" fill="currentColor" opacity=".15"/>
@@ -127,36 +88,18 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
                 <button className="p-1 rounded-md hover:bg-gray-100" onClick={() => setOpen(false)} aria-label="Fechar">✕</button>
               </div>
 
-              <p className="text-sm text-gray-600 mb-3">
-                Convide alguém como <strong>Professor</strong> (único) ou <strong>Gestor</strong> (vários).
-              </p>
+              <p className="text-sm text-gray-600 mb-3">Convide como <strong>Professor</strong> (único) ou <strong>Gestor</strong> (vários).</p>
 
               <div className="space-y-4">
                 <div>
                   <div className="text-sm font-medium mb-2">Convidar por e-mail (usuário já cadastrado)</div>
                   <div className="flex gap-2">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="usuario@exemplo.com"
-                      className="w-full rounded-md border px-3 py-1.5 text-sm"
-                    />
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value as any)}
-                      className="rounded-md border px-2 py-1.5 text-sm"
-                    >
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@exemplo.com" className="w-full rounded-md border px-3 py-1.5 text-sm" />
+                    <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as any)} className="rounded-md border px-2 py-1.5 text-sm">
                       <option value="GESTOR">Gestor</option>
                       <option value="PROFESSOR">Professor</option>
                     </select>
-                    <button
-                      disabled={loading || !email}
-                      onClick={inviteByEmail}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white disabled:opacity-60"
-                    >
-                      Convidar
-                    </button>
+                    <button disabled={loading || !email} onClick={inviteByEmail} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white disabled:opacity-60">Convidar</button>
                   </div>
                 </div>
 
@@ -169,9 +112,7 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
                       <div className="p-3 text-sm text-gray-500">Nenhum link criado ainda.</div>
                     ) : (
                       links.map((l) => {
-                        const url = typeof window !== "undefined"
-                          ? `${window.location.origin}/share/${l.token}`
-                          : `/share/${l.token}`;
+                        const url = typeof window !== "undefined" ? `${window.location.origin}/share/${l.token}` : `/share/${l.token}`;
                         return (
                           <div key={l.id} className="p-3 flex items-center justify-between gap-3">
                             <div className="min-w-0">
@@ -179,12 +120,7 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
                               <div className="text-xs text-gray-500 truncate">{url}</div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                className="px-2 py-1 rounded-md border border-gray-300 hover:bg-gray-50 text-sm"
-                                onClick={() => copyLink(l.token)}
-                              >
-                                Copiar
-                              </button>
+                              <button className="px-2 py-1 rounded-md border border-gray-300 hover:bg-gray-50 text-sm" onClick={() => copyLink(l.token)}>Copiar</button>
                             </div>
                           </div>
                         );
@@ -198,9 +134,7 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
               </div>
 
               <div className="mt-4 text-right">
-                <button className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" onClick={() => setOpen(false)}>
-                  Fechar
-                </button>
+                <button className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" onClick={() => setOpen(false)}>Fechar</button>
               </div>
             </div>
           </div>
