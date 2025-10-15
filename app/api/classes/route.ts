@@ -8,12 +8,13 @@ export async function GET() {
 
   const classes = await prisma.class.findMany({
     where: {
-      accesses: {
-        some: { userId: user.id }
-      }
+      OR: [
+        { ownerId: user.id },
+        { accesses: { some: { userId: user.id } } },
+      ],
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, createdAt: true }
+    select: { id: true, name: true, createdAt: true },
   });
 
   return NextResponse.json({ ok:true, classes });
@@ -30,17 +31,14 @@ export async function POST(req: Request) {
   }
 
   const cls = await prisma.class.create({
-    data: { 
+    data: {
       name,
       ownerId: user.id,
       accesses: {
-        create: {
-          userId: user.id,
-          role: "PROFESSOR"
-        }
-      }
+        create: { userId: user.id, role: "PROFESSOR" },
+      },
     },
-    select: { id: true, name: true, createdAt: true }
+    select: { id: true, name: true, createdAt: true },
   });
 
   return NextResponse.json({ ok:true, class: cls }, { status: 201 });
