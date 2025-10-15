@@ -13,7 +13,8 @@ export default function EditChamadaClient({
   initialTitle,
   initialStudents,
   initialPresence,
-  initialLessonDate
+  initialLessonDate,
+  readOnly = false,
 } : {
   classId: string;
   className: string;
@@ -22,6 +23,7 @@ export default function EditChamadaClient({
   initialStudents: Student[];
   initialPresence?: Record<string, boolean>;
   initialLessonDate?: string; // YYYY-MM-DD
+  readOnly?: boolean;
 }) {
   const router = useRouter();
 
@@ -49,7 +51,7 @@ export default function EditChamadaClient({
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
-  // Carrega presenças do servidor (caso initialPresence não venha completo)
+  // Carrega presenças do servidor
   useEffect(() => {
     (async () => {
       try {
@@ -72,22 +74,22 @@ export default function EditChamadaClient({
   }, [classId, seq, initialStudents]);
 
   function toggleStudent(studentId: string) {
+    if (readOnly) return;
     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
   }
   function setAll(v: boolean) {
+    if (readOnly) return;
     const all: Record<string, boolean> = {};
     for (const s of students) all[s.id] = v;
     setPresence(all);
   }
 
-  // Atualiza somente o nome do aluno (modal)
+  // Atualiza somente o nome do aluno (modal) — bloqueado em readOnly
   async function handleEditSave() {
+    if (readOnly) return;
     if (!editId) return;
     const name = editName.trim();
-    if (name.length < 2) {
-      alert("Informe o nome (mínimo 2 caracteres).");
-      return;
-    }
+    if (name.length < 2) { alert("Informe o nome (mínimo 2 caracteres)."); return; }
     try {
       const res = await fetch(`/api/classes/${classId}/students/${editId}`, {
         method: "PATCH",
@@ -105,6 +107,7 @@ export default function EditChamadaClient({
     }
   }
   async function handleEditDelete() {
+    if (readOnly) return;
     if (!editId) return;
     if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
     try {
@@ -121,63 +124,9 @@ export default function EditChamadaClient({
     }
   }
 
-  // PUT da data quando o usuário altera
-  async function onChangeDate(v: string) {
-    setLessonDate(v);
-    try {
-      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ lessonDate: v || undefined })
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok || d?.ok === false) throw new Error(d?.error || "Falha ao atualizar data");
-    } catch (e: any) {
-      alert(e?.message || "Erro ao atualizar data");
-      console.error(e);
-    }
-  }
-
-  // Salvar presenças
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
-      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ presences })
-      });
-      const d = await res.json();
-      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao salvar presenças");
-      alert("Chamada atualizada com sucesso.");
-    } catch (e: any) {
-      alert(e?.message || "Erro ao salvar chamada");
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Excluir chamada
-  async function handleDelete() {
-    if (!confirm("Tem certeza que deseja excluir esta chamada? Esta ação não pode ser desfeita.")) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, { method: "DELETE" });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao excluir chamada");
-      router.push(`/classes/${classId}/chamadas`);
-    } catch (e: any) {
-      alert(e?.message || "Erro ao excluir chamada");
-      console.error(e);
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  // Adicionar aluno
+  // ⬇️ FALTAVA ESTA FUNÇÃO
   async function handleAddStudent() {
+    if (readOnly) return;
     const name = newName.trim();
     const cpf = newCpf.trim();
     const contact = newContact.trim();
@@ -220,12 +169,68 @@ export default function EditChamadaClient({
     }
   }
 
-  // Importar CSV/XLSX
-  async function __handleImportSend() {
-    if (!classId || !uploadFile) {
-      alert("Selecione um arquivo CSV/XLSX antes de enviar.");
-      return;
+  // PUT da data — bloqueado em readOnly
+  async function onChangeDate(v: string) {
+    setLessonDate(v);
+    if (readOnly) return;
+    try {
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lessonDate: v || undefined })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d?.ok === false) throw new Error(d?.error || "Falha ao atualizar data");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao atualizar data");
+      console.error(e);
     }
+  }
+
+  // Salvar presenças — bloqueado em readOnly
+  async function handleSave() {
+    if (readOnly) return;
+    setSaving(true);
+    try {
+      const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ presences })
+      });
+      const d = await res.json();
+      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao salvar presenças");
+      alert("Chamada atualizada com sucesso.");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar chamada");
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Excluir chamada — bloqueado em readOnly
+  async function handleDelete() {
+    if (readOnly) return;
+    if (!confirm("Tem certeza que deseja excluir esta chamada? Esta ação não pode ser desfeita.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao excluir chamada");
+      router.push(`/classes/${classId}/chamadas`);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao excluir chamada");
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // Importar CSV/XLSX — bloqueado em readOnly
+  async function __handleImportSend() {
+    if (readOnly) return;
+    if (!classId || !uploadFile) { alert("Selecione um arquivo CSV/XLSX antes de enviar."); return; }
     setImporting(true);
     try {
       const fd = new FormData();
@@ -234,7 +239,6 @@ export default function EditChamadaClient({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
-      // Recarregar alunos e refazer mapa de presenças
       const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
       const data2 = await res2.json().catch(() => ({}));
       if (data2?.ok && Array.isArray(data2.students)) {
@@ -242,7 +246,7 @@ export default function EditChamadaClient({
         setPresence((prev) => {
           const n: Record<string, boolean> = { ...(prev || {}) };
           for (const st of data2.students) {
-            if (!(st.id in n)) n[st.id] = true; // só marca presentes os NOVOS
+            if (!(st.id in n)) n[st.id] = true;
           }
           return n;
         });
@@ -275,12 +279,14 @@ export default function EditChamadaClient({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">
-              Editar chamada <span className="text-gray-500">#{seq}</span> — {className}
+              {readOnly ? "Visualizar chamada" : "Editar chamada"} <span className="text-gray-500">#{seq}</span> — {className}
             </h1>
-            <p className="text-sm text-gray-600">Atualize presenças, cadastre alunos e gerencie esta chamada.</p>
+            <p className="text-sm text-gray-600">
+              {readOnly ? "Somente visualização (gestor)." : "Atualize presenças, cadastre alunos e gerencie esta chamada."}
+            </p>
           </div>
 
-          {/* Título + Data (desktop na mesma linha, mobile quebra) */}
+          {/* Título + Data */}
           <div className="flex flex-wrap items-end gap-4">
             <div className="text-right">
               <div className="text-xs text-gray-500">Nome da aula</div>
@@ -288,7 +294,8 @@ export default function EditChamadaClient({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ex.: Aula 01 - Revisão"
-                className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+                className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+                disabled={readOnly}
               />
             </div>
             <div className="min-w-40">
@@ -297,7 +304,8 @@ export default function EditChamadaClient({
                 type="date"
                 value={lessonDate}
                 onChange={(e) => onChangeDate(e.target.value)}
-                className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+                className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+                disabled={readOnly}
               />
             </div>
           </div>
@@ -305,7 +313,7 @@ export default function EditChamadaClient({
 
         <div className="space-y-5 px-5 py-5">
           {/* Adicionar aluno */}
-          {showAdd && (
+          {!readOnly && (
             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="grid gap-1">
@@ -364,8 +372,13 @@ export default function EditChamadaClient({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
-              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
-              <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+              {!readOnly && (
+                <>
+                  <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+                  <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+                </>
+              )}
+              {readOnly && <span className="text-blue-900/80">Modo visualização</span>}
             </div>
 
             <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
@@ -391,9 +404,9 @@ export default function EditChamadaClient({
                     <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
                     <div className="px-3 py-2">
                       <div
-                        className="font-medium text-gray-900 cursor-pointer select-none"
-                        onDoubleClick={() => { setEditId(s.id); setEditName(s.name); }}
-                        title="Duplo clique para editar"
+                        className={`font-medium text-gray-900 ${readOnly ? "" : "cursor-pointer select-none"}`}
+                        onDoubleClick={() => { if (!readOnly) { setEditId(s.id); setEditName(s.name); } }}
+                        title={readOnly ? undefined : "Duplo clique para editar"}
                       >
                         {s.name}
                       </div>
@@ -407,6 +420,7 @@ export default function EditChamadaClient({
                           checked={!!presence[s.id]}
                           onChange={() => toggleStudent(s.id)}
                           aria-label={`Presença de ${s.name}`}
+                          disabled={readOnly}
                         />
                       </label>
                     </div>
@@ -418,95 +432,104 @@ export default function EditChamadaClient({
 
           {/* Barra de ações — abaixo da lista */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
-            >
-              {saving ? "Salvando..." : "Salvar alterações"}
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+                >
+                  {saving ? "Salvando..." : "Salvar alterações"}
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setShowAdd((s) => !s)}
-              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-            >
-              Adicionar aluno
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAdd((s) => !s)}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                >
+                  Adicionar aluno
+                </button>
 
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
-            >
-              {deleting ? "Excluindo..." : "Excluir chamada"}
-            </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+                >
+                  {deleting ? "Excluindo..." : "Excluir chamada"}
+                </button>
+              </>
+            )}
+            {readOnly && (
+              <span className="text-sm text-gray-600">Somente visualização</span>
+            )}
           </div>
 
-          {/* Importação (CSV/XLSX) */}
-          <div className="rounded-2xl border">
-            <div className="border-b px-4 py-3">
-              <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
-              <p className="text-xs text-gray-600 mt-1">
-                <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
-              </p>
-            </div>
+          {/* Importação (CSV/XLSX) — apenas professor */}
+          {!readOnly && (
+            <div className="rounded-2xl border">
+              <div className="border-b px-4 py-3">
+                <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+                </p>
+              </div>
 
-            <div className="grid gap-3 px-4 py-4">
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
-                <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
-                <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+              <div className="grid gap-3 px-4 py-4">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+                  <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+                  <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
 
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                  <input
-                    type="file"
-                    accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    className="hidden"
-                    id="students-file-input"
-                    ref={fileRef}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] || null;
-                      setUploadName(f ? f.name : null);
-                      setUploadFile(f);
-                    }}
-                  />
-                  <label
-                    htmlFor="students-file-input"
-                    className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
-                  >
-                    Escolher arquivo
-                  </label>
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    <input
+                      type="file"
+                      accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      className="hidden"
+                      id="students-file-input"
+                      ref={fileRef}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        setUploadName(f ? f.name : null);
+                        setUploadFile(f);
+                      }}
+                    />
+                    <label
+                      htmlFor="students-file-input"
+                      className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+                    >
+                      Escolher arquivo
+                    </label>
 
-                  <button
-                    type="button"
-                    onClick={__handleImportSend}
-                    disabled={!uploadFile || importing}
-                    className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                  >
-                    {importing ? "Enviando..." : "Enviar planilha"}
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={__handleImportSend}
+                      disabled={!uploadFile || importing}
+                      className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {importing ? "Enviando..." : "Enviar planilha"}
+                    </button>
+                  </div>
 
-                {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+                  {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
 
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
-                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
-                    Baixar modelo CSV
-                  </a>
-                  <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
-                    Baixar modelo XLSX
-                  </a>
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+                    <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+                      Baixar modelo CSV
+                    </a>
+                    <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+                      Baixar modelo XLSX
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>{/* /px-5 py-5 */}
       </section>
 
-      {/* MODAL editar aluno */}
-      {editId && (
+      {/* MODAL editar aluno — só quando edição estiver habilitada */}
+      {(!readOnly && editId) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
