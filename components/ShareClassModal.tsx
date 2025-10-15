@@ -91,12 +91,19 @@ export default function ShareClassModal({ classId }: { classId: string }) {
 
   return (
     <>
+      {/* Botão compacto com ícone (sem texto) */}
       <button
         type="button"
-        className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50"
+        className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50"
         onClick={() => setOpen(true)}
+        aria-label="Compartilhar turma"
+        title="Compartilhar"
       >
-        Compartilhar
+        {/* ícone share (inline SVG, 20x20) */}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M16 6a3 3 0 1 0-2.83-4H13a3 3 0 0 0 3 4Z" fill="currentColor" opacity=".15"/>
+          <path d="M18 8a3 3 0 1 0-2.83-4M6 14a3 3 0 1 0 2.83 4M6 14l9-5M8.83 18l7.34 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
       </button>
 
       {open && (
