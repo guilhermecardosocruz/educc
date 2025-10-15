@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ClassCard from "./ClassCard";
 
 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
 type ClassItem = { id: string; name: string; createdAt: string };
@@ -15,7 +15,7 @@ export default function DashboardPage() {
   const [err, setErr] = useState<string | null>(null);
 
   async function fetchMe() {
-    const res = await fetch("/api/auth/me");
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
     if (res.status === 401) {
       router.push("/login");
       return;
@@ -25,7 +25,7 @@ export default function DashboardPage() {
   }
 
   async function fetchClasses() {
-    const res = await fetch("/api/classes");
+    const res = await fetch("/api/classes", { cache: "no-store" });
     if (res.status === 401) {
       router.push("/login");
       return;
@@ -67,7 +67,6 @@ export default function DashboardPage() {
       return;
     }
     setName("");
-    // recarrega lista
     await fetchClasses();
   }
 
@@ -115,21 +114,11 @@ export default function DashboardPage() {
           {classes.length === 0 ? (
             <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
           ) : (
-            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {classes.map((c) => (
-                <li key={c.id}>
-                  <Link
-                    href={`/classes/${c.id}`}
-                    className="block p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
-                  >
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(c.createdAt).toLocaleString()}
-                    </div>
-                  </Link>
-                </li>
+                <ClassCard key={c.id} cls={c} />
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </section>

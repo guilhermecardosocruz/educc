@@ -1,0 +1,2152 @@
+
+===== prisma/schema.prisma =====
+1 generator client {
+2   provider = "prisma-client-js"
+3 }
+4 
+5 datasource db {
+6   provider   = "postgresql"
+7   url        = env("DATABASE_URL")
+8   directUrl  = env("DIRECT_URL")
+9 }
+10 
+11 model User {
+12   id           String   @id @default(cuid())
+13   name         String
+14   cpf          String   @unique
+15   birthDate    DateTime
+16   email        String   @unique
+17   phone        String
+18   createdAt    DateTime @default(now())
+19   passwordHash String?
+20 
+21   resetTokens PasswordResetToken[]
+22   classes     Class[]            @relation("UserClasses")
+23 }
+24 
+25 model PasswordResetToken {
+26   id        String   @id @default(cuid())
+27   token     String   @unique
+28   userId    String
+29   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+30   expiresAt DateTime
+31   usedAt    DateTime?
+32   createdAt DateTime @default(now())
+33 }
+34 
+35 model Class {
+36   id          String       @id @default(cuid())
+37   name        String
+38   ownerId     String
+39   owner       User         @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+40   createdAt   DateTime     @default(now())
+41 
+42   attendances Attendance[]
+43   contents    Content[]
+44   students    Student[]
+45 }
+46 
+47 model Attendance {
+48   id        String   @id @default(cuid())
+49   classId   String
+50   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+51   seq       Int
+52   title     String   @default("Chamada")
+53   createdAt DateTime @default(now())
+54   lessonDate DateTime?   // data editável da aula (UTC, opcional)
+55 
+56   @@unique([classId, seq])
+57 }
+58 
+59 model Content {
+60   id        String   @id @default(cuid())
+61   classId   String
+62   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+63   seq       Int
+64   title     String   @default("Conteúdo")
+65   bodyHtml  String?  // futuro: editor; por enquanto pode ficar vazio
+66   createdAt DateTime @default(now())
+67 
+68   @@unique([classId, seq])
+69 }
+70 
+71 model Student {
+72   id        String   @id @default(cuid())
+73   classId   String
+74   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+75   name      String
+76   cpf       String?
+77   contact   String?  // whatsapp/email/telefone
+78   createdAt DateTime @default(now())
+79 }
+80 
+81 
+82 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+83 
+84 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+85 model AttendancePresence {
+86   id        String   @id @default(cuid())
+87   classId   String
+88   seq       Int
+89   studentId String
+90   present   Boolean  @default(false)
+91   createdAt DateTime @default(now())
+92   updatedAt DateTime @updatedAt
+93 
+94   // Sem relações Prisma para não exigir back-relations agora.
+95   @@unique([classId, seq, studentId], name: "class_seq_student_unique")
+96   @@index([classId, seq], name: "class_seq_idx")
+97 }
+
+===== lib/session.ts =====
+1 import { cookies, headers } from "next/headers";
+2 import { prisma } from "@/lib/prisma";
+3 
+4 const COOKIE_NAME = "session_user_id";
+5 
+6 /** Lê o userId do cookie (async em Next 15) */
+7 export async function getSessionUserId(): Promise<string | null> {
+8   try {
+9     const c = await cookies();
+10     const id = c.get(COOKIE_NAME)?.value || null;
+11     return id;
+12   } catch {
+13     // Fallback para contexts onde cookies() não está disponível
+14     const h = await headers();
+15     const cookieHeader = h.get("cookie") || "";
+16     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+17     return m ? m[1] : null;
+18   }
+19 }
+20 
+21 /** Busca o usuário logado; retorna null se não houver */
+22 export async function requireUser() {
+23   const id = await getSessionUserId();
+24   if (!id) return null;
+25   const user = await prisma.user.findUnique({
+26     where: { id },
+27     select: { id: true, name: true, email: true }
+28   });
+29   return user;
+30 }
+31 
+32 /** Apaga o cookie de sessão (async em Next 15) */
+33 export async function clearSessionCookie() {
+34   const c = await cookies();
+35   c.set({
+36     name: COOKIE_NAME,
+37     value: "",
+38     httpOnly: true,
+39     path: "/",
+40     maxAge: 0
+41   });
+42 }
+
+===== middleware.ts =====
+1 import { NextResponse } from "next/server";
+2 import type { NextRequest } from "next/server";
+3 
+4 export function middleware(req: NextRequest) {
+5   const path = req.nextUrl.pathname;
+6 
+7   // Corrige / (auth) /register e / (auth) /recover
+8   if (path === "/(auth)/register") {
+9     const url = req.nextUrl.clone();
+10     url.pathname = "/register";
+11     return NextResponse.redirect(url);
+12   }
+13   if (path === "/(auth)/recover") {
+14     const url = req.nextUrl.clone();
+15     url.pathname = "/recover-email";
+16     return NextResponse.redirect(url);
+17   }
+18 
+19   return NextResponse.next();
+20 }
+21 
+22 export const config = {
+23   matcher: ["/(auth)/register", "/(auth)/recover"]
+24 };
+
+===== app/api/classes/[id]/access/links/route.ts =====
+[MISSING] app/api/classes/[id]/access/links/route.ts
+
+===== app/api/classes/[id]/access/members/route.ts =====
+[MISSING] app/api/classes/[id]/access/members/route.ts
+
+===== app/api/classes/[id]/access/claim/route.ts =====
+[MISSING] app/api/classes/[id]/access/claim/route.ts
+
+===== app/api/classes/[id]/access/logs/route.ts =====
+[MISSING] app/api/classes/[id]/access/logs/route.ts
+
+===== app/api/share/[token]/route.ts =====
+[MISSING] app/api/share/[token]/route.ts
+
+===== app/api/classes/[id]/chamadas/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 const createSchema = z.object({
+7   title: z.string().trim().min(1).max(100).optional().default("Chamada")
+8   ,
+9   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() // YYYY-MM-DD
+10 });
+11 
+12 // GET: lista chamadas (order por seq)
+13 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+14   const { id } = await ctx.params;
+15   const user = await requireUser();
+16   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+17 
+18   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+19   if (!cls) return NextResponse.json({ ok:false }, { status: 404 });
+20 
+21   const { searchParams } = new URL(req.url);
+22   const order = searchParams.get("order") === "asc" ? "asc" : "desc";
+23 
+24   const items = await prisma.attendance.findMany({
+25     where: { classId: id },
+26     orderBy: { seq: order },
+27     select: { id: true, seq: true, title: true, createdAt: true }
+28   });
+29 
+30   return NextResponse.json({ ok:true, attendances: items });
+31 }
+32 
+33 // POST: cria chamada e garante conteúdo com mesmo seq
+34 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+35   const { id } = await ctx.params;
+36   const user = await requireUser();
+37   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+38 
+39   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+40   if (!cls) return NextResponse.json({ ok:false }, { status: 404 });
+41 
+42   const body = await req.json().catch(()=> ({}));
+43   const parsed = createSchema.safeParse(body);
+44   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+45 
+46   const result = await prisma.$transaction(async (tx) => {
+47     const last = await tx.attendance.findFirst({
+48       where: { classId: id },
+49       orderBy: { seq: "desc" },
+50       select: { seq: true }
+51     });
+52     const nextSeq = (last?.seq ?? 0) + 1;
+53 
+54     // data editável (UTC 00:00) — hoje por padrão
+55     const __now = new Date();
+56     const __todayUTC = new Date(Date.UTC(__now.getUTCFullYear(), __now.getUTCMonth(), __now.getUTCDate()));
+57     const lessonDate = (parsed.data.lessonDate ? new Date(parsed.data.lessonDate + 'T00:00:00.000Z') : __todayUTC);
+58 
+59     const attendance = await tx.attendance.create({
+60       data: {
+61         classId: id,
+62         seq: nextSeq,
+63         title: parsed.data.title || `Chamada ${nextSeq}`,
+64         lessonDate
+65       },
+66       select: { id: true, seq: true, title: true, createdAt: true, lessonDate: true }
+67     });
+68     // garante conteúdo com mesmo seq (se não existir)
+69     await tx.content.upsert({
+70       where: { classId_seq: { classId: id, seq: nextSeq } },
+71       update: {},
+72       create: {
+73         classId: id,
+74         seq: nextSeq,
+75         title: `Conteúdo ${nextSeq}`,
+76         bodyHtml: null
+77       }
+78     });
+79 
+80     return attendance;
+81   });
+82 
+83   return NextResponse.json({ ok:true, attendance: result }, { status: 201 });
+84 }
+
+===== app/api/classes/[id]/chamadas/[seq]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+7   const { id, seq } = await ctx.params;
+8   const user = await requireUser();
+9   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+10 
+11   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+12   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
+13 
+14   const seqNum = Number(seq);
+15   if (!Number.isFinite(seqNum)) {
+16     return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+17   }
+18 
+19   try {
+20     // tente pela chave composta (se existir)
+21     await prisma.attendance.delete({
+22       where: { classId_seq: { classId: id, seq: seqNum } as any },
+23     });
+24     return NextResponse.json({ ok: true });
+25   } catch (e1) {
+26     try {
+27       // fallback: sem unique composto => apaga pelo filtro
+28       await prisma.attendance.deleteMany({
+29         where: { classId: id, seq: seqNum },
+30       });
+31       return NextResponse.json({ ok: true });
+32     } catch (e2) {
+33       console.error("DELETE chamada erro:", e2);
+34       return NextResponse.json({ ok: false, error: "Erro ao excluir chamada" }, { status: 500 });
+35     }
+36   }
+37 }
+38 const updateSchema = z.object({
+39   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+40 });
+41 
+42 export async function PUT(req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+43   const { id, seq } = await ctx.params;
+44   const user = await requireUser();
+45   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+46 
+47   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+48   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
+49 
+50   const seqNum = Number(seq);
+51   if (!Number.isFinite(seqNum)) return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+52 
+53   const body = await req.json().catch(() => ({}));
+54   const parsed = updateSchema.safeParse(body);
+55   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+56 
+57   const updateData: any = {};
+58   if (parsed.data.lessonDate) {
+59     updateData.lessonDate = new Date(parsed.data.lessonDate + 'T00:00:00.000Z');
+60   }
+61   if (!Object.keys(updateData).length) return NextResponse.json({ ok: true, updated: 0 });
+62 
+63   await prisma.attendance.update({
+64     where: { classId_seq: { classId: id, seq: seqNum } as any },
+65     data: updateData
+66   });
+67 
+68   return NextResponse.json({ ok: true, updated: 1 });
+69 }
+
+===== app/api/classes/[id]/conteudos/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 // Monta um HTML simples com as seções opcionais, para persistência única
+7 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+8   const b = [];
+9   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+10   if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+11   if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+12   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+13   return b.join("\n");
+14 }
+15 
+16 const createSchema = z.object({
+17   title: z.string().trim().min(2, "Nome da aula é obrigatório"),
+18   objetivos: z.string().optional(),
+19   desenvolvimento: z.string().optional(),
+20   recursos: z.string().optional(),
+21   bncc: z.string().optional(),
+22 });
+23 
+24 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+25   const { id } = await params;
+26   const user = await requireUser();
+27   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+28 
+29   // checa turma do usuário
+30   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+31   if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
+32 
+33   const list = await prisma.content.findMany({
+34     where: { classId: id },
+35     orderBy: { seq: "asc" },
+36     select: { id: true, seq: true, title: true }
+37   });
+38 
+39   return NextResponse.json({ ok:true, list });
+40 }
+41 
+42 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+43   const { id } = await params;
+44   const user = await requireUser();
+45   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+46 
+47   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+48   if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
+49 
+50   const body = await req.json().catch(()=> ({}));
+51   const parsed = createSchema.safeParse(body);
+52   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+53 
+54   // seq = último + 1
+55   const last = await prisma.content.findFirst({ where: { classId: id }, orderBy: { seq: "desc" }, select: { seq: true } });
+56   const nextSeq = (last?.seq ?? 0) + 1;
+57 
+58   const created = await prisma.content.create({
+59     data: {
+60       classId: id,
+61       seq: nextSeq,
+62       title: parsed.data.title,
+63       bodyHtml: toBodyHtml({
+64         objetivos: parsed.data.objetivos,
+65         desenvolvimento: parsed.data.desenvolvimento,
+66         recursos: parsed.data.recursos,
+67         bncc: parsed.data.bncc,
+68       }),
+69     },
+70     select: { id: true, seq: true, title: true }
+71   });
+72 
+73   return NextResponse.json({ ok:true, content: created }, { status: 201 });
+74 }
+
+===== app/api/classes/[id]/conteudos/[seq]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 /** Serialização do bodyHtml em seções e vice-versa */
+7 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+8   const b = [];
+9   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+10   if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+11   if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+12   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+13   return b.join("\n");
+14 }
+15 function fromBodyHtml(html?: string) {
+16   const out: Record<string,string> = {};
+17   if (!html) return out;
+18   const get = (title: string) => {
+19     const re = new RegExp(`<h3>\\s*${title}\\s*<\\/h3>\\s*<p>([\\s\\S]*?)<\\/p>`, "i");
+20     const m = html.match(re);
+21     return m ? m[1] : "";
+22   };
+23   out.objetivos = get("Objetivos");
+24   out.desenvolvimento = get("Desenvolvimento das Atividades");
+25   out.recursos = get("Recursos Pedagógicos");
+26   out.bncc = get("BNCC");
+27   return out;
+28 }
+29 
+30 const patchSchema = z.object({
+31   title: z.string().trim().min(1).optional(), // "nome da aula" pode editar mas não é obrigatório no PATCH
+32   objetivos: z.string().optional(),
+33   desenvolvimento: z.string().optional(),
+34   recursos: z.string().optional(),
+35   bncc: z.string().optional(),
+36 });
+37 
+38 export async function GET(_req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+39   const { id, seq } = await params;
+40   const user = await requireUser();
+41   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+42 
+43   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true } });
+44   if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+45 
+46   const content = await prisma.content.findFirst({
+47     where: { classId: id, seq: Number(seq) },
+48     select: { id:true, seq:true, title:true, bodyHtml:true }
+49   });
+50   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+51 
+52   const sections = fromBodyHtml(content.bodyHtml || "");
+53   return NextResponse.json({ ok:true, content: { ...content, ...sections } });
+54 }
+55 
+56 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+57   const { id, seq } = await params;
+58   const user = await requireUser();
+59   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+60 
+61   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true } });
+62   if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+63 
+64   const body = await req.json().catch(()=> ({}));
+65   const parsed = patchSchema.safeParse(body);
+66   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status:400 });
+67 
+68   const current = await prisma.content.findFirst({
+69     where: { classId: id, seq: Number(seq) },
+70     select: { id:true, title:true, bodyHtml:true, seq:true }
+71   });
+72   if (!current) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+73 
+74   const existing = fromBodyHtml(current.bodyHtml || "");
+75   const merged = {
+76     objetivos: parsed.data.objetivos ?? existing.objetivos ?? "",
+77     desenvolvimento: parsed.data.desenvolvimento ?? existing.desenvolvimento ?? "",
+78     recursos: parsed.data.recursos ?? existing.recursos ?? "",
+79     bncc: parsed.data.bncc ?? existing.bncc ?? "",
+80   };
+81 
+82   const updated = await prisma.content.update({
+83     where: { id: current.id },
+84     data: {
+85       title: parsed.data.title ?? current.title,
+86       bodyHtml: toBodyHtml(merged),
+87     },
+88     select: { id:true, seq:true, title:true, bodyHtml:true }
+89   });
+90 
+91   return NextResponse.json({ ok:true, content: updated });
+92 }
+93 
+94 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+95   const { id, seq } = await params;
+96   const user = await requireUser();
+97   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+98 
+99   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true } });
+100   if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+101 
+102   const content = await prisma.content.findFirst({ where: { classId: id, seq: Number(seq) }, select: { id:true } });
+103   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+104 
+105   await prisma.content.delete({ where: { id: content.id } });
+106 
+107   return NextResponse.json({ ok:true });
+108 }
+
+===== app/api/classes/[id]/students/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { z } from "zod";
+5 import { Prisma } from "@prisma/client";
+6 
+7 // trata string vazia como undefined
+8 const emptyToUndef = z.string().transform(v => v.trim()).transform(v => v.length ? v : undefined).optional();
+9 
+10 const createSchema = z.object({
+11   name: z.string().trim().min(2, "Nome muito curto"),
+12   cpf: emptyToUndef,
+13   contact: emptyToUndef,
+14 });
+15 
+16 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+17   const { id } = await ctx.params;
+18   const user = await requireUser();
+19   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+20 
+21   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+22   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
+23 
+24   const students = await prisma.student.findMany({
+25     where: { classId: id },
+26     orderBy: { name: "asc" },
+27     select: { id: true, name: true, cpf: true, contact: true },
+28   });
+29 
+30   return NextResponse.json({ ok: true, students });
+31 }
+32 
+33 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+34   const { id } = await ctx.params;
+35   const user = await requireUser();
+36   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+37 
+38   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+39   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
+40 
+41   const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
+42   if (!parsed.success) {
+43     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+44   }
+45   const { name, cpf, contact } = parsed.data;
+46 
+47   try {
+48     const student = await prisma.student.create({
+49       data: {
+50         name,
+51         classId: id,
+52         ...(cpf ? { cpf } : {}),
+53         ...(contact ? { contact } : {}),
+54       },
+55       select: { id: true, name: true, cpf: true, contact: true },
+56     });
+57     return NextResponse.json({ ok: true, student }, { status: 201 });
+58   } catch (err: any) {
+59     if (err instanceof Prisma.PrismaClientKnownRequestError) {
+60       if (err.code === "P2002") {
+61         return NextResponse.json({ ok: false, error: "Conflito de valor único (já existe)." }, { status: 409 });
+62       }
+63       if (err.code === "P2003") {
+64         return NextResponse.json({ ok: false, error: "Falha de integridade referencial." }, { status: 400 });
+65       }
+66     }
+67     console.error("POST /students error:", err);
+68     return NextResponse.json({ ok: false, error: "Erro interno ao criar aluno." }, { status: 500 });
+69   }
+70 }
+
+===== app/api/classes/[id]/students/[studentId]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { z } from "zod";
+5 import { Prisma } from "@prisma/client";
+6 
+7 const schema = z.object({
+8   name: z.string().trim().min(2, "Nome muito curto"),
+9 });
+10 
+11 // PATCH /api/classes/:id/students/:studentId  -> editar nome
+12 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; studentId: string }> }) {
+13   const { id, studentId } = await params;
+14   const user = await requireUser();
+15   if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
+16 
+17   const exists = await prisma.student.findFirst({
+18     where: { id: studentId, classId: id, cls: { ownerId: user.id } },
+19     select: { id: true },
+20   });
+21   if (!exists) return NextResponse.json({ ok: false, error: "Aluno não encontrado" }, { status: 404 });
+22 
+23   const body = await req.json().catch(() => ({}));
+24   const parsed = schema.safeParse(body);
+25   if (!parsed.success) {
+26     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+27   }
+28 
+29   const updated = await prisma.student.update({
+30     where: { id: studentId },
+31     data: { name: parsed.data.name },
+32     select: { id: true, name: true, cpf: true, contact: true },
+33   });
+34 
+35   return NextResponse.json({ ok: true, student: updated });
+36 }
+37 
+38 // DELETE /api/classes/:id/students/:studentId -> excluir aluno
+39 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; studentId: string }> }) {
+40   const { id, studentId } = await params;
+41   const user = await requireUser();
+42   if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
+43 
+44   const exists = await prisma.student.findFirst({
+45     where: { id: studentId, classId: id, cls: { ownerId: user.id } },
+46     select: { id: true },
+47   });
+48   if (!exists) return NextResponse.json({ ok: false, error: "Aluno não encontrado" }, { status: 404 });
+49 
+50   try {
+51     await prisma.student.delete({ where: { id: studentId } });
+52     return NextResponse.json({ ok: true });
+53   } catch (err: any) {
+54     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+55       return NextResponse.json(
+56         { ok: false, error: "Não foi possível excluir: o aluno está vinculado a presenças." },
+57         { status: 409 }
+58       );
+59     }
+60     console.error("DELETE student error:", err);
+61     return NextResponse.json({ ok: false, error: "Erro interno ao excluir aluno." }, { status: 500 });
+62   }
+63 }
+
+===== app/api/classes/[id]/students/import/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 
+5 // Garantir Node.js (xlsx não roda no edge)
+6 export const runtime = "nodejs";
+7 export const dynamic = "force-dynamic";
+8 
+9 type Row = { name?: string; cpf?: string; contact?: string };
+10 
+11 function norm(h: string) {
+12   return h
+13     .toLowerCase()
+14     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+15     .replace(/[^a-z0-9]+/g, "")
+16     .trim();
+17 }
+18 
+19 async function parseCSV(file: File): Promise<Row[]> {
+20   const text = await file.text();
+21   const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+22   if (!lines.length) return [];
+23   const headers = lines[0].split(/[,;|\t]/).map(norm);
+24   const out: Row[] = [];
+25   for (let i = 1; i < lines.length; i++) {
+26     const cols = lines[i].split(/[,;|\t]/);
+27     const row: any = {};
+28     headers.forEach((h, idx) => {
+29       const v = (cols[idx] ?? "").toString().trim();
+30       if (h === "name" || h === "nome") row.name = v;
+31       else if (h === "cpf") row.cpf = v;
+32       else if (h === "contact" || h === "contato" || h === "telefone" || h === "whatsapp") row.contact = v;
+33     });
+34     out.push(row);
+35   }
+36   return out;
+37 }
+38 
+39 async function parseXLSX(file: File): Promise<Row[]> {
+40   const ab = await file.arrayBuffer();
+41   const XLSX = await import("xlsx");
+42   const wb = XLSX.read(ab, { type: "array" });
+43   const ws = wb.Sheets[wb.SheetNames[0]];
+44   const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+45   return json.map((r) => {
+46     const map: any = {};
+47     for (const k of Object.keys(r)) {
+48       const nk = norm(k);
+49       map[nk] = r[k];
+50     }
+51     const row: Row = {};
+52     row.name = (map["name"] ?? map["nome"] ?? "").toString().trim();
+53     row.cpf = (map["cpf"] ?? "").toString().trim();
+54     row.contact = (map["contact"] ?? map["contato"] ?? map["telefone"] ?? map["whatsapp"] ?? "").toString().trim();
+55     return row;
+56   });
+57 }
+58 
+59 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+60   const { id } = await params;
+61   const user = await requireUser();
+62   if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
+63 
+64   const form = await req.formData().catch(() => null);
+65   const file = form?.get("file") as File | null;
+66   if (!file) return NextResponse.json({ ok: false, error: "Arquivo não enviado (campo 'file')." }, { status: 400 });
+67 
+68   const cls = await prisma.class.findFirst({
+69     where: { id, ownerId: user.id },
+70     select: { id: true }
+71   });
+72   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada." }, { status: 404 });
+73 
+74   try {
+75     const mime = (file.type || "").toLowerCase();
+76     const name = (file as any).name ? String((file as any).name).toLowerCase() : "";
+77 
+78     let rows: Row[] = [];
+79 
+80     // 1) CSV explícito por MIME ou extensão
+81     const looksCSV = mime.includes("csv") || name.endsWith(".csv");
+82     // 2) XLSX explícito por MIME ou extensão
+83     const looksXLSX = mime.includes("spreadsheet") || mime.includes("excel") || name.endsWith(".xlsx");
+84 
+85     if (looksXLSX) {
+86       rows = await parseXLSX(file);
+87     } else if (looksCSV) {
+88       rows = await parseCSV(file);
+89     } else {
+90       // Caso incerto (sem name e sem MIME confiável): tenta XLSX primeiro e cai pra CSV
+91       try {
+92         rows = await parseXLSX(file);
+93       } catch {
+94         rows = await parseCSV(file);
+95       }
+96     }
+97 
+98     const toInsert = rows
+99       .map(r => ({
+100         name: (r.name ?? "").toString().trim(),
+101         cpf: (r.cpf ?? "").toString().trim(),
+102         contact: (r.contact ?? "").toString().trim(),
+103       }))
+104       .filter(r => r.name.length > 0);
+105 
+106     if (!toInsert.length) {
+107       return NextResponse.json({ ok: false, error: "Planilha sem linhas válidas. A coluna 'name' é obrigatória." }, { status: 400 });
+108     }
+109 
+110     await prisma.$transaction(async (tx) => {
+111       for (const r of toInsert) {
+112         await tx.student.create({
+113           data: {
+114             classId: id,
+115             name: r.name,
+116             ...(r.cpf ? { cpf: r.cpf } : {}),
+117             ...(r.contact ? { contact: r.contact } : {}),
+118           },
+119         });
+120       }
+121     });
+122 
+123     return NextResponse.json({ ok: true, inserted: toInsert.length });
+124   } catch (e: any) {
+125     console.error("IMPORT students error:", e);
+126     const msg = e?.message || "Falha ao processar a planilha.";
+127     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+128   }
+129 }
+
+===== app/dashboard/page.tsx =====
+1 "use client";
+2 import { useEffect, useState } from "react";
+3 import Link from "next/link";
+4 import { useRouter } from "next/navigation";
+5 
+6 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
+7 type ClassItem = { id: string; name: string; createdAt: string };
+8 
+9 export default function DashboardPage() {
+10   const router = useRouter();
+11   const [me, setMe] = useState<Me | null>(null);
+12   const [loading, setLoading] = useState(true);
+13   const [classes, setClasses] = useState<ClassItem[]>([]);
+14   const [name, setName] = useState("");
+15   const [err, setErr] = useState<string | null>(null);
+16 
+17   async function fetchMe() {
+18     const res = await fetch("/api/auth/me");
+19     if (res.status === 401) {
+20       router.push("/login");
+21       return;
+22     }
+23     const data: Me = await res.json();
+24     setMe(data);
+25   }
+26 
+27   async function fetchClasses() {
+28     const res = await fetch("/api/classes");
+29     if (res.status === 401) {
+30       router.push("/login");
+31       return;
+32     }
+33     const data = await res.json();
+34     if (data?.ok) setClasses(data.classes || []);
+35   }
+36 
+37   useEffect(() => {
+38     (async () => {
+39       await fetchMe();
+40       await fetchClasses();
+41       setLoading(false);
+42     })();
+43     // eslint-disable-next-line react-hooks/exhaustive-deps
+44   }, []);
+45 
+46   async function onLogout() {
+47     await fetch("/api/auth/logout", { method: "POST" });
+48     router.push("/login");
+49   }
+50 
+51   async function onCreateClass(e: React.FormEvent) {
+52     e.preventDefault();
+53     setErr(null);
+54     const n = name.trim();
+55     if (n.length < 2) {
+56       setErr("Nome da turma muito curto.");
+57       return;
+58     }
+59     const res = await fetch("/api/classes", {
+60       method: "POST",
+61       headers: { "content-type": "application/json" },
+62       body: JSON.stringify({ name: n })
+63     });
+64     const data = await res.json();
+65     if (!res.ok || !data?.ok) {
+66       setErr(data?.error ?? "Erro ao criar turma");
+67       return;
+68     }
+69     setName("");
+70     // recarrega lista
+71     await fetchClasses();
+72   }
+73 
+74   if (loading) {
+75     return <main className="min-h-screen flex items-center justify-center">Carregando...</main>;
+76   }
+77 
+78   const firstName = me?.user?.name?.split(" ")[0] || "Olá";
+79 
+80   return (
+81     <main className="min-h-screen p-6 lg:p-10">
+82       <header className="flex items-center justify-between max-w-5xl mx-auto mb-8">
+83         <div className="flex items-center gap-3">
+84           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+85           <h1 className="text-2xl font-semibold">EDUCC • Dashboard</h1>
+86         </div>
+87         <button onClick={onLogout} className="btn-primary">Sair</button>
+88       </header>
+89 
+90       <section className="max-w-5xl mx-auto">
+91         <div className="card p-6 mb-8">
+92           <h2 className="text-xl font-semibold">{firstName}, bem-vindo(a)!</h2>
+93           <p className="text-gray-600">Gerencie suas turmas abaixo.</p>
+94         </div>
+95 
+96         <div className="card p-6 mb-6">
+97           <h3 className="font-semibold mb-3">Criar nova turma</h3>
+98           <form onSubmit={onCreateClass} className="flex flex-col sm:flex-row gap-3">
+99             <input
+100               className="input flex-1"
+101               type="text"
+102               placeholder="Nome da turma"
+103               value={name}
+104               onChange={(e) => setName(e.target.value)}
+105               required
+106               minLength={2}
+107             />
+108             <button type="submit" className="btn-primary">Criar turma</button>
+109           </form>
+110           {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
+111         </div>
+112 
+113         <div className="card p-6">
+114           <h3 className="font-semibold mb-4">Minhas turmas</h3>
+115           {classes.length === 0 ? (
+116             <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
+117           ) : (
+118             <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+119               {classes.map((c) => (
+120                 <li key={c.id}>
+121                   <Link
+122                     href={`/classes/${c.id}`}
+123                     className="block p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
+124                   >
+125                     <div className="font-medium">{c.name}</div>
+126                     <div className="text-xs text-gray-500 mt-1">
+127                       {new Date(c.createdAt).toLocaleString()}
+128                     </div>
+129                   </Link>
+130                 </li>
+131               ))}
+132             </ul>
+133           )}
+134         </div>
+135       </section>
+136     </main>
+137   );
+138 }
+
+===== components/ShareClassModal.tsx =====
+[MISSING] components/ShareClassModal.tsx
+
+===== app/classes/[id]/page.tsx =====
+1 import Link from "next/link";
+2 import { notFound } from "next/navigation";
+3 import { prisma } from "@/lib/prisma";
+4 import ReportButton from "./ReportButton"; // ✅ único import novo
+5 
+6 export const dynamic = "force-dynamic";
+7 
+8 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+9   const { id } = await params;
+10 
+11   const cls = await prisma.class.findFirst({
+12     where: { id },
+13     select: { id: true, name: true }
+14   });
+15   if (!cls) return notFound();
+16 
+17   return (
+18     <main className="min-h-screen">
+19       {/* Cabeçalho */}
+20       <section className="bg-gradient-to-br from-[#0A66FF]/90 to-[#0A66FF] text-white">
+21         <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between gap-3">
+22           <Link
+23             href={`/dashboard`}
+24             className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/60"
+25           >
+26             Voltar
+27           </Link>
+28 
+29           <div className="text-right">
+30             <h1 className="text-xl font-semibold">
+31               Turma — <span className="opacity-95">{cls.name}</span>
+32             </h1>
+33             <p className="mt-1 text-sm opacity-90">Gerencie a turma acessando Chamadas e Conteúdos.</p>
+34           </div>
+35         </div>
+36       </section>
+37 
+38       {/* Corpo */}
+39       <section className="max-w-5xl mx-auto px-6 py-8">
+40         <div className="rounded-2xl border bg-white p-6 shadow-sm">
+41           <h2 className="text-lg font-semibold mb-2 text-gray-900">Ações</h2>
+42           <p className="text-gray-600 mb-4">Use os atalhos abaixo para gerenciar a turma.</p>
+43 
+44           {/* ===== Stack vertical centralizada ===== */}
+45           <div className="actions-stack flex flex-col items-stretch gap-3">
+46             <Link
+47               href={`/classes/${cls.id}/chamadas`}
+48               className="bg-[#0A66FF] text-white shadow hover:opacity-90"
+49             >
+50               Ir para Chamadas
+51             </Link>
+52 
+53             <Link
+54               href={`/classes/${cls.id}/conteudos`}
+55               className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+56             >
+57               Ir para Conteúdos
+58             </Link>
+59 
+60             {/* 🔹 Os botões internos do ReportButton também ficam 100% via .actions-stack */}
+61             <div className="w-full">
+62               <ReportButton classId={cls.id} className={cls.name} />
+63             </div>
+64 
+65             <Link
+66               href={`/classes/${cls.id}/ai-help`}
+67               className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+68             >
+69               Ajuda com IA
+70             </Link>
+71           </div>
+72         </div>
+73       </section>
+74     </main>
+75   );
+76 }
+
+===== app/classes/[id]/ReportButton.tsx =====
+1 "use client";
+2 import { useEffect, useRef, useState } from "react";
+3 
+4 type RankRow = { name: string; faltas: number };
+5 
+6 function sanitizeFile(s: string) {
+7   return s.replace(/[^\p{L}\p{N}_-]+/gu, "_");
+8 }
+9 
+10 // Converte o bodyHtml com divisórias e espaçamento extra:
+11 // - 2 quebras entre itens (títulos/paragraphs)
+12 // - remove tags restantes
+13 function htmlToPrettyText(html?: string): string {
+14   if (!html) return "";
+15   return html
+16     .replace(/<h3[^>]*>/gi, "\n\n")   // antes de cada seção
+17     .replace(/<\/h3>/gi, "\n\n")      // depois do título da seção
+18     .replace(/<p[^>]*>/gi, "")        // abre parágrafo
+19     .replace(/<\/p>/gi, "\n\n")       // fecha parágrafo (2 quebras)
+20     .replace(/<br\s*\/?>/gi, "\n")    // <br>
+21     .replace(/<[^>]+>/g, "")          // demais tags
+22     .replace(/\n{3,}/g, "\n\n")       // normaliza excesso
+23     .trim();
+24 }
+25 
+26 export default function ReportButton({ classId, className }: { classId: string; className: string }) {
+27   const [open, setOpen] = useState<null | "calls" | "contents">(null);
+28   const [start, setStart] = useState("");
+29   const [end, setEnd] = useState("");
+30   const [busy, setBusy] = useState(false);
+31   const jsPdfLoaded = useRef(false);
+32 
+33   useEffect(() => {
+34     const d = new Date();
+35     const toIso = (dt: Date) =>
+36       `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+37     setEnd(toIso(d));
+38     setStart(toIso(new Date(d.getFullYear(), d.getMonth() - 1, d.getDate())));
+39   }, []);
+40 
+41   async function ensureJsPdf() {
+42     if (jsPdfLoaded.current) return;
+43     await new Promise<void>((resolve, reject) => {
+44       const s = document.createElement("script");
+45       s.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
+46       s.onload = () => {
+47         jsPdfLoaded.current = true;
+48         resolve();
+49       };
+50       s.onerror = () => reject(new Error("Falha ao carregar jsPDF"));
+51       document.head.appendChild(s);
+52     });
+53   }
+54 
+55   // ------------ Relatório de Chamadas ------------
+56   async function generateCalls() {
+57     if (!start || !end) {
+58       alert("Informe início e fim.");
+59       return;
+60     }
+61     if (start > end) {
+62       alert("Data inicial não pode ser maior que a final.");
+63       return;
+64     }
+65     setBusy(true);
+66     try {
+67       await ensureJsPdf();
+68 
+69       // Alunos
+70       const stRes = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+71       const stData = await stRes.json().catch(() => ({}));
+72       const students: Array<{ id: string; name: string }> =
+73         stRes.ok && stData?.ok && Array.isArray(stData.students) ? stData.students : [];
+74 
+75       // Chamadas (todas; filtramos por período)
+76       const chRes = await fetch(`/api/classes/${classId}/chamadas?order=asc`, { cache: "no-store" });
+77       const chData = await chRes.json().catch(() => ({}));
+78       const chamadas: Array<{ seq: number; createdAt: string }> =
+79         chRes.ok && chData?.ok && Array.isArray(chData.attendances) ? chData.attendances : [];
+80 
+81       const onlyDate = (iso: string) => (iso || "").slice(0, 10);
+82       const periodChamadas = chamadas.filter((c) => {
+83         const d = onlyDate(c.createdAt);
+84         return d && d >= start && d <= end;
+85       });
+86       const seqs: number[] = periodChamadas.map((c) => c.seq);
+87 
+88       // Presenças por seq
+89       const presenceBySeq: Record<number, Record<string, boolean>> = {};
+90       for (const seq of seqs) {
+91         const prRes = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
+92         const prData = await prRes.json().catch(() => ({}));
+93         const rows: Array<{ studentId: string; present: boolean }> =
+94           prRes.ok && prData?.ok && Array.isArray(prData.rows) ? prData.rows : [];
+95         const map: Record<string, boolean> = {};
+96         for (const r of rows) map[r.studentId] = !!r.present;
+97         // garante chave para todos
+98         students.forEach((s) => {
+99           if (!(s.id in map)) map[s.id] = false;
+100         });
+101         presenceBySeq[seq] = map;
+102       }
+103 
+104       // Métricas e ranking
+105       const faltas = new Map<string, number>();
+106       students.forEach((s) => faltas.set(s.id, 0));
+107 
+108       let somaPresentes = 0;
+109       for (const seq of seqs) {
+110         const pres = presenceBySeq[seq] || {};
+111         let presentes = 0;
+112         students.forEach((s) => {
+113           if (pres[s.id]) presentes++;
+114           else faltas.set(s.id, (faltas.get(s.id) || 0) + 1);
+115         });
+116         somaPresentes += presentes;
+117       }
+118 
+119       const totalAlunos = students.length;
+120       const totalAulas = seqs.length;
+121       const mediaPresentesAbs = totalAulas ? Math.round((somaPresentes / totalAulas) * 100) / 100 : 0;
+122       const mediaPercentual =
+123         totalAulas && totalAlunos ? Math.round((mediaPresentesAbs / totalAlunos) * 10000) / 100 : 0;
+124 
+125       const ranking: RankRow[] = students
+126         .map<RankRow>((s) => ({ name: s.name, faltas: faltas.get(s.id) || 0 }))
+127         .sort((a: RankRow, b: RankRow) => b.faltas - a.faltas);
+128 
+129       // @ts-ignore
+130       const { jsPDF } = (window as any).jspdf;
+131       const doc = new jsPDF({ unit: "pt", format: "a4" });
+132       const pageW = doc.internal.pageSize.getWidth();
+133       const pageH = doc.internal.pageSize.getHeight();
+134       const margin = 40;
+135       let y = margin;
+136 
+137       doc.setFont("helvetica", "bold");
+138       doc.setFontSize(14);
+139       doc.text(`Relatório de Chamadas — ${className}`, margin, y);
+140       y += 24;
+141 
+142       doc.setFont("helvetica", "normal");
+143       doc.setFontSize(10);
+144       doc.text(`Período: ${start} a ${end}`, margin, y);
+145       y += 24;
+146 
+147       // >>>>>>> NOVO BLOCO (resumo do período) — adicionado sem alterar o restante
+148       doc.setFont("helvetica", "bold");
+149       doc.setFontSize(12);
+150       doc.text("Resumo do período", margin, y);
+151       y += 16;
+152 
+153       doc.setFont("helvetica", "normal");
+154       doc.setFontSize(10);
+155       doc.text(`Total de alunos na turma: ${totalAlunos}`, margin, y); y += 14;
+156       doc.text(`Média de presentes (abs.): ${mediaPresentesAbs}`, margin, y); y += 14;
+157       doc.text(`Média de presença (%): ${mediaPercentual}%`, margin, y); y += 20;
+158       // <<<<<<< FIM DO NOVO BLOCO
+159 
+160       doc.setFont("helvetica", "bold");
+161       doc.setFontSize(12);
+162       doc.text("Ranking dos mais faltosos", margin, y);
+163       y += 18;
+164 
+165       doc.setFont("helvetica", "normal");
+166       doc.setFontSize(10);
+167       const col1 = margin;
+168       const col2 = margin + 40;
+169       const col3 = pageW - margin - 60;
+170 
+171       // Cabeçalho
+172       doc.setDrawColor(230);
+173       doc.setFillColor(249, 250, 251);
+174       doc.rect(margin, y - 12, pageW - margin * 2, 22, "F");
+175       doc.setFont("helvetica", "bold");
+176       doc.text("#", col1, y);
+177       doc.text("Aluno", col2, y);
+178       doc.text("Faltas", col3, y);
+179       y += 16;
+180       doc.setFont("helvetica", "normal");
+181 
+182       const rowH = 16;
+183       for (let i = 0; i < ranking.length; i++) {
+184         const r = ranking[i];
+185         if (y > pageH - margin) {
+186           doc.addPage();
+187           y = margin;
+188         }
+189         doc.text(String(i + 1), col1, y);
+190         const nomeLines = doc.splitTextToSize(r.name, col3 - col2 - 10);
+191         doc.text(nomeLines, col2, y);
+192         doc.text(String(r.faltas), col3, y);
+193         y += rowH + (nomeLines.length - 1) * 10;
+194       }
+195 
+196       const filename = `Relatorio_Chamadas_${sanitizeFile(className)}_${start}_a_${end}.pdf`;
+197       // download
+198       doc.save(filename);
+199       // abrir em nova aba
+200       const blob = doc.output("blob");
+201       const url = URL.createObjectURL(blob);
+202       window.open(url, "_blank");
+203 
+204       setOpen(null);
+205     } catch (e: any) {
+206       console.error(e);
+207       alert(e?.message || "Falha ao gerar PDF.");
+208     } finally {
+209       setBusy(false);
+210     }
+211   }
+212 
+213   // ------------ Relatório de Conteúdos ------------
+214   async function generateContents() {
+215     setBusy(true);
+216     try {
+217       await ensureJsPdf();
+218 
+219       // Busca com bodyHtml
+220       const res = await fetch(`/api/classes/${classId}/conteudos/full`, { cache: "no-store" });
+221       const data = await res.json().catch(() => ({}));
+222       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao carregar conteúdos");
+223       const list: Array<{ seq: number; title: string; bodyHtml?: string | null }> = data.list || [];
+224 
+225       // @ts-ignore
+226       const { jsPDF } = (window as any).jspdf;
+227       const doc = new jsPDF({ unit: "pt", format: "a4" });
+228       const pageW = doc.internal.pageSize.getWidth();
+229       const pageH = doc.internal.pageSize.getHeight();
+230       const margin = 40;
+231       let y = margin;
+232 
+233       const maxWidth = pageW - margin * 2 - 20;
+234 
+235       const ensurePage = (spaceNeeded = 80) => {
+236         if (y > pageH - margin - spaceNeeded) {
+237           doc.addPage();
+238           y = margin;
+239         }
+240       };
+241 
+242       doc.setFont("helvetica", "bold");
+243       doc.setFontSize(14);
+244       doc.text(`Conteúdos — ${className}`, margin, y);
+245       y += 28;
+246 
+247       for (const c of list) {
+248         ensurePage(120);
+249         // Título da aula
+250         doc.setFont("helvetica", "bold");
+251         doc.setFontSize(12);
+252         doc.text(`${c.seq} — ${c.title}`, margin, y);
+253         y += 20;
+254 
+255         // Corpo (com 2 quebras entre itens)
+256         const text = htmlToPrettyText(c.bodyHtml || "");
+257         if (text) {
+258           doc.setFont("helvetica", "normal");
+259           doc.setFontSize(10);
+260           const lines = doc.splitTextToSize(text, maxWidth);
+261           for (const chunk of lines) {
+262             ensurePage(18);
+263             doc.text(chunk, margin + 20, y);
+264             y += 14;
+265           }
+266           // 2 quebras extras depois do bloco
+267           y += 14;
+268         }
+269 
+270         // 4 quebras extras entre aulas
+271         y += 28;
+272       }
+273 
+274       const filename = `Conteudos_${sanitizeFile(className)}.pdf`;
+275       // download
+276       doc.save(filename);
+277       // abrir em nova aba
+278       const blob = doc.output("blob");
+279       const url = URL.createObjectURL(blob);
+280       window.open(url, "_blank");
+281 
+282       setOpen(null);
+283     } catch (e: any) {
+284       console.error(e);
+285       alert(e?.message || "Falha ao gerar PDF.");
+286     } finally {
+287       setBusy(false);
+288     }
+289   }
+290 
+291   return (
+292     <>
+293       <button
+294         type="button"
+295         className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+296         onClick={() => setOpen("calls")}
+297       >
+298         Relatório Chamadas
+299       </button>
+300 
+301       <button
+302         type="button"
+303         className="rounded-xl border px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+304         onClick={() => setOpen("contents")}
+305       >
+306         Conteúdos em PDF
+307       </button>
+308 
+309       {open === "calls" && (
+310         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+311           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+312             <h3 className="text-lg font-semibold">Relatório de Chamadas (PDF)</h3>
+313             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+314               <label className="grid gap-1 text-sm">
+315                 <span>Início</span>
+316                 <input
+317                   value={start}
+318                   onChange={(e) => setStart(e.target.value)}
+319                   type="date"
+320                   className="rounded-xl border px-3 py-2"
+321                   required
+322                 />
+323               </label>
+324               <label className="grid gap-1 text-sm">
+325                 <span>Fim</span>
+326                 <input
+327                   value={end}
+328                   onChange={(e) => setEnd(e.target.value)}
+329                   type="date"
+330                   className="rounded-xl border px-3 py-2"
+331                   required
+332                 />
+333               </label>
+334             </div>
+335             <div className="mt-5 flex justify-end gap-2">
+336               <button onClick={() => setOpen(null)} className="rounded-xl border px-3 py-2 text-sm">
+337                 Cancelar
+338               </button>
+339               <button
+340                 onClick={generateCalls}
+341                 disabled={busy}
+342                 className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm text-white"
+343               >
+344                 {busy ? "Gerando..." : "Gerar PDF"}
+345               </button>
+346             </div>
+347           </div>
+348         </div>
+349       )}
+350 
+351       {open === "contents" && (
+352         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+353           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+354             <h3 className="text-lg font-semibold">Conteúdos em PDF</h3>
+355             <div className="mt-5 flex justify-end gap-2">
+356               <button onClick={() => setOpen(null)} className="rounded-xl border px-3 py-2 text-sm">
+357                 Cancelar
+358               </button>
+359               <button
+360                 onClick={generateContents}
+361                 disabled={busy}
+362                 className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm text-white"
+363               >
+364                 {busy ? "Gerando..." : "Gerar PDF"}
+365               </button>
+366             </div>
+367           </div>
+368         </div>
+369       )}
+370     </>
+371   );
+372 }
+
+===== app/classes/[id]/chamadas/page.tsx =====
+1 import Link from "next/link";
+2 import { prisma } from "@/lib/prisma";
+3 
+4 export const dynamic = "force-dynamic";
+5 
+6 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+7   const { id } = await params;
+8 
+9   const cls = await prisma.class.findFirst({
+10     where: { id },
+11     select: { id: true, name: true }
+12   });
+13 
+14   if (!cls) {
+15     return (
+16       <main className="mx-auto max-w-5xl px-6 py-10">
+17         <div className="rounded-2xl border bg-white p-8 text-center">
+18           <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
+19           <Link
+20             href="/classes"
+21             className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90"
+22           >
+23             Voltar
+24           </Link>
+25         </div>
+26       </main>
+27     );
+28   }
+29 
+30   const attendances = await prisma.attendance.findMany({
+31     where: { classId: cls.id },
+32     orderBy: [{ seq: "desc" }],
+33     select: { seq: true, title: true }
+34   });
+35 
+36   return (
+37     <main className="mx-auto max-w-5xl px-6 py-10">
+38       {/* Cabeçalho */}
+39       <div className="rounded-2xl border bg-white/90 backdrop-blur p-6 shadow-sm">
+40         <div className="flex flex-wrap items-center justify-between gap-3">
+41           <div className="flex items-center gap-2">
+42             <Link
+43               href={`/classes/${cls.id}`}
+44               className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+45             >
+46               Voltar
+47             </Link>
+48           </div>
+49 
+50           <div className="text-right">
+51             <h1 className="text-xl font-semibold text-gray-900">
+52               Chamadas — <span className="text-[#0A66FF]">{cls.name}</span>
+53             </h1>
+54             <p className="mt-1 text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
+55           </div>
+56 
+57           <Link
+58             href={`/classes/${cls.id}/chamadas/new`}
+59             className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+60           >
+61             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="-ms-1">
+62               <path fill="currentColor" d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2z"/>
+63             </svg>
+64             Nova chamada
+65           </Link>
+66         </div>
+67       </div>
+68 
+69       {/* Lista */}
+70       <section className="mt-6">
+71         <div className="rounded-2xl border bg-white shadow-sm">
+72           {attendances.length === 0 ? (
+73             <div className="p-8 text-center">
+74               <p className="text-gray-700">Ainda não há chamadas nesta turma.</p>
+75               <Link
+76                 href={`/classes/${cls.id}/chamadas/new`}
+77                 className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0A66FF] px-4 py-2 text-sm font-medium text-[#0A66FF] hover:bg-[#0A66FF] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+78               >
+79                 Criar primeira chamada
+80               </Link>
+81             </div>
+82           ) : (
+83             <ul className="divide-y divide-blue-100">
+84               {attendances.map((att) => (
+85                 <li key={att.seq} className="odd:bg-blue-50/40 even:bg-blue-100/30">
+86                   <Link
+87                     href={`/classes/${cls.id}/chamadas/${att.seq}`}
+88                     className="group block px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+89                     title={att.title || `Chamada ${att.seq}`}
+90                   >
+91                     <div className="flex items-center justify-between">
+92                       <p className="truncate text-[15px] font-semibold text-gray-900">
+93                         {att.seq} — {att.title?.trim() ? att.title : "Sem título"}
+94                       </p>
+95                       <div className="ms-4 shrink-0 rounded-full bg-[#0A66FF]/10 p-2 text-[#0A66FF] transition group-hover:bg-[#0A66FF]/20">
+96                         <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+97                           <path fill="currentColor" d="M9 6l6 6l-6 6"/>
+98                         </svg>
+99                       </div>
+100                     </div>
+101                   </Link>
+102                 </li>
+103               ))}
+104             </ul>
+105           )}
+106         </div>
+107       </section>
+108     </main>
+109   );
+110 }
+
+===== app/classes/[id]/chamadas/ui.tsx =====
+1 "use client";
+2 import { useEffect, useMemo, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 type Item = { id: string; seq: number; title: string; createdAt: string };
+5 type Order = "asc" | "desc";
+6 
+7 export default function ChamadasClient({ classId }: { classId: string }) {
+8   const router = useRouter();
+9   const [items, setItems] = useState<Item[]>([]);
+10   const [loading, setLoading] = useState(true);
+11   const [order, setOrder] = useState<Order>("desc");
+12   const [error, setError] = useState<string | null>(null);
+13 
+14   async function load() {
+15     setLoading(true);
+16     const res = await fetch(`/api/classes/${classId}/chamadas?order=${order}`, { cache: "no-store" });
+17     if (!res.ok) { setError("Falha ao carregar chamadas"); setLoading(false); return; }
+18     const data = await res.json();
+19     setItems(data?.attendances ?? []);
+20     setLoading(false);
+21   }
+22   useEffect(() => { load(); /* eslint-disable-next-line */ }, [order, classId]);
+23 
+24   const sorted = useMemo(() => [...items].sort((a,b)=> order==="asc"? a.seq-b.seq : b.seq-a.seq), [items, order]);
+25 
+26   return (
+27     <div className="mt-6">
+28       <div className="flex flex-wrap items-center gap-3">
+29         <button
+30           onClick={() => router.push(`/classes/${classId}/chamadas/new`)}
+31           className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow transition"
+32         >
+33           ➕ Nova chamada
+34         </button>
+35         <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur">
+36           <span className="opacity-90">Ordenar por ID:</span>
+37           <button onClick={()=>setOrder("asc")} className={`rounded-xl px-3 py-1 ${order==="asc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Crescente</button>
+38           <button onClick={()=>setOrder("desc")} className={`rounded-xl px-3 py-1 ${order==="desc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Decrescente</button>
+39         </div>
+40       </div>
+41 
+42       <div className="mt-5 bg-white/5 rounded-2xl p-1">
+43         {loading ? (
+44           <div className="p-6 text-white/90">Carregando chamadas...</div>
+45         ) : error ? (
+46           <div className="p-6 text-red-100">{error}</div>
+47         ) : sorted.length === 0 ? (
+48           <div className="p-6 text-white/90">Nenhuma chamada ainda. Crie a primeira.</div>
+49         ) : (
+50           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-2">
+51             {sorted.map((it) => (
+52               <li key={it.id}>
+53                 <button
+54                   className="w-full text-left rounded-xl bg-white px-4 py-3 shadow-sm hover:shadow transition border border-white/70"
+55                   onClick={() => router.push(`/classes/${classId}/chamadas/${it.seq}`)}
+56                 >
+57                   <div className="text-sm text-[var(--color-brand-blue)] font-semibold">ID #{it.seq}</div>
+58                   <div className="font-medium">{it.title}</div>
+59                 </button>
+60               </li>
+61             ))}
+62           </ul>
+63         )}
+64       </div>
+65     </div>
+66   );
+67 }
+
+===== app/classes/[id]/conteudos/page.tsx =====
+1 "use client";
+2 import Link from "next/link";
+3 import { useEffect, useRef, useState } from "react";
+4 import { useParams } from "next/navigation";
+5 
+6 type Item = { id: string; seq: number; title: string };
+7 
+8 export default function ConteudosPage() {
+9   const { id } = useParams<{ id: string }>();
+10   const [list, setList] = useState<Item[]>([]);
+11   const [loading, setLoading] = useState(true);
+12   const [err, setErr] = useState<string|null>(null);
+13 
+14   const [open, setOpen] = useState(false);
+15   const [title, setTitle] = useState("");
+16   const [objetivos, setObjetivos] = useState("");
+17   const [desenvolvimento, setDesenvolvimento] = useState("");
+18   const [recursos, setRecursos] = useState("");
+19   const [bncc, setBncc] = useState("");
+20   const [saving, setSaving] = useState(false);
+21 
+22   const fileRef = useRef<HTMLInputElement|null>(null);
+23   const [fname, setFname] = useState<string|null>(null);
+24   const [importing, setImporting] = useState(false);
+25 
+26   async function load() {
+27     if (!id) return;
+28     setLoading(true); setErr(null);
+29     try {
+30       const res = await fetch(`/api/classes/${id}/conteudos`, { cache: "no-store" });
+31       const data = await res.json().catch(()=> ({}));
+32       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao carregar");
+33       setList(data.list || []);
+34     } catch (e:any) {
+35       setErr(e?.message || "Erro ao carregar");
+36     } finally {
+37       setLoading(false);
+38     }
+39   }
+40 
+41   useEffect(()=> { load(); }, [id]);
+42 
+43   async function onSave(e: React.FormEvent) {
+44     e.preventDefault();
+45     if (!title.trim()) { alert("Nome da aula é obrigatório."); return; }
+46     setSaving(true);
+47     try {
+48       const res = await fetch(`/api/classes/${id}/conteudos`, {
+49         method: "POST",
+50         headers: { "content-type": "application/json" },
+51         body: JSON.stringify({ title: title.trim(), objetivos, desenvolvimento, recursos, bncc })
+52       });
+53       const data = await res.json().catch(()=> ({}));
+54       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao salvar");
+55       setOpen(false);
+56       setTitle(""); setObjetivos(""); setDesenvolvimento(""); setRecursos(""); setBncc("");
+57       await load();
+58     } catch (e:any) {
+59       alert(e?.message || "Erro ao salvar");
+60     } finally {
+61       setSaving(false);
+62     }
+63   }
+64 
+65   async function onImport() {
+66     const file = fileRef.current?.files?.[0];
+67     if (!file) return;
+68     setImporting(true);
+69     try {
+70       const fd = new FormData();
+71       fd.append("file", file);
+72       const res = await fetch(`/api/classes/${id}/conteudos/import`, { method: "POST", body: fd });
+73       const data = await res.json().catch(()=> ({}));
+74       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao importar");
+75       await load();
+76       if (fileRef.current) fileRef.current.value = "";
+77       setFname(null);
+78       alert(`Importação concluída: criados ${data.created ?? 0}, atualizados ${data.updated ?? 0}.`);
+79     } catch(e:any) {
+80       alert(e?.message || "Erro ao importar");
+81     } finally {
+82       setImporting(false);
+83     }
+84   }
+85 
+86   return (
+87     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+88       <div className="mb-6 rounded-2xl border bg-white p-5 sm:p-6">
+89         <div className="mb-4 flex items-center justify-between">
+90           <Link href={`/classes/${id}`} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">Voltar</Link>
+91         </div>
+92         <h1 className="text-2xl font-semibold">Conteúdos — <span className="text-[#0A66FF]">Turma</span></h1>
+93         <p className="mt-1 text-sm text-gray-600">Gerencie os conteúdos desta turma.</p>
+94 
+95         <div className="mt-4">
+96           <button onClick={()=> setOpen(true)} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90">
+97             + Adicionar conteúdo
+98           </button>
+99         </div>
+100       </div>
+101 
+102       <div className="rounded-2xl border bg-white">
+103         {loading ? (
+104           <p className="p-4 text-sm text-gray-600">Carregando…</p>
+105         ) : err ? (
+106           <p className="p-4 text-sm text-red-600">{err}</p>
+107         ) : list.length === 0 ? (
+108           <div className="p-4 text-sm text-gray-700">
+109             Nenhum conteúdo ainda. Clique em <b>Adicionar conteúdo</b> ou importe por planilha abaixo.
+110           </div>
+111         ) : (
+112           <ul className="divide-y">
+113             {list.map((it)=> (
+114               <li key={it.id} className="flex items-center justify-between p-4">
+115                 <div className="text-sm">
+116                   <div className="font-medium">{it.seq} — {it.title}</div>
+117                 </div>
+118                 {/* ✅ agora aponta para /conteudos/[seq] */}
+119                 <Link
+120                   href={`/classes/${id}/conteudos/${it.seq}`}
+121                   className="rounded-full border px-3 py-1 text-sm hover:border-blue-400 hover:text-blue-700"
+122                 >
+123                   Abrir
+124                 </Link>
+125               </li>
+126             ))}
+127           </ul>
+128         )}
+129       </div>
+130 
+131       <section className="mt-6 rounded-2xl border bg-white p-5 sm:p-6">
+132         <h2 className="text-base font-semibold">Enviar conteúdo por planilha</h2>
+133         <p className="mt-1 text-sm text-gray-600">
+134           Suporte a CSV (pronto) e XLSX (preparado). Campos: <b>nome da aula (obrigatório)</b>,
+135           objetivos, desenvolvimento das atividades, recursos pedagógicos e BNCC.
+136         </p>
+137         <div className="mt-3 flex flex-wrap items-center gap-2">
+138           <input
+139             ref={fileRef}
+140             type="file"
+141             accept=".csv,.xlsx"
+142             id="conteudos-file"
+143             className="hidden"
+144             onChange={(e)=> setFname(e.target.files?.[0]?.name ?? null)}
+145           />
+146           <label htmlFor="conteudos-file" className="cursor-pointer rounded-xl border px-3 py-2 text-sm hover:border-blue-500 hover:text-blue-600">
+147             Escolher arquivo (CSV/XLSX)
+148           </label>
+149           <button
+150             onClick={onImport}
+151             disabled={importing || !fname}
+152             className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+153           >
+154             {importing ? "Enviando..." : "Enviar planilha"}
+155           </button>
+156           {fname && <span className="text-xs text-gray-700">Selecionado: {fname}</span>}
+157           <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">
+158             Baixar modelo CSV
+159           </a>
+160           <a className="rounded-xl border px-3 py-1.5 text-sm hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">
+161             Baixar modelo XLSX
+162           </a>
+163         </div>
+164       </section>
+165 
+166       {/* Modal - igual à versão anterior */}
+167       {open && (
+168         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+169           <div className="w-full max-w-xl rounded-2xl bg-white p-5 sm:p-6 shadow-lg">
+170             <h3 className="text-lg font-semibold">Novo conteúdo</h3>
+171             <p className="text-xs text-gray-500 mb-3">Somente <b>Nome da aula</b> é obrigatório.</p>
+172             <form onSubmit={onSave} className="space-y-3">
+173               <div>
+174                 <label className="mb-1 block text-sm">Nome da aula *</label>
+175                 <input className="input" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Ex.: Algoritmos — Aula 1" required />
+176               </div>
+177               <div>
+178                 <label className="mb-1 block text-sm">Objetivos</label>
+179                 <textarea className="input min-h-[72px]" value={objetivos} onChange={(e)=>setObjetivos(e.target.value)} />
+180               </div>
+181               <div>
+182                 <label className="mb-1 block text-sm">Desenvolvimento das atividades</label>
+183                 <textarea className="input min-h-[72px]" value={desenvolvimento} onChange={(e)=>setDesenvolvimento(e.target.value)} />
+184               </div>
+185               <div>
+186                 <label className="mb-1 block text-sm">Recursos pedagógicos</label>
+187                 <textarea className="input min-h-[72px]" value={recursos} onChange={(e)=>setRecursos(e.target.value)} />
+188               </div>
+189               <div>
+190                 <label className="mb-1 block text-sm">BNCC</label>
+191                 <input className="input" value={bncc} onChange={(e)=>setBncc(e.target.value)} placeholder="Ex.: EF06MA01" />
+192               </div>
+193               <div className="flex justify-end gap-2 pt-2">
+194                 <button type="button" onClick={()=> setOpen(false)} className="rounded-xl border px-3 py-2 text-sm">Cancelar</button>
+195                 <button type="submit" disabled={saving} className="rounded-xl bg-[#0A66FF] px-4 py-2 text-white disabled:opacity-60">
+196                   {saving ? "Salvando..." : "Salvar"}
+197                 </button>
+198               </div>
+199             </form>
+200           </div>
+201         </div>
+202       )}
+203     </main>
+204   );
+205 }
+
+===== app/classes/[id]/conteudos/ui.tsx =====
+1 "use client";
+2 
+3 import { useRef, useState } from "react";
+4 
+5 export function ImportContentsBox({ classId }: { classId: string }) {
+6   const [uploadFile, setUploadFile] = useState<File | null>(null);
+7   const [uploadName, setUploadName] = useState<string | null>(null);
+8   const [importing, setImporting] = useState(false);
+9   const fileRef = useRef<HTMLInputElement>(null);
+10 
+11   async function handleImportSend() {
+12     if (!uploadFile) return;
+13     setImporting(true);
+14     try {
+15       const fd = new FormData();
+16       fd.append("file", uploadFile);
+17       const res = await fetch(`/api/classes/${classId}/conteudos/import`, {
+18         method: "POST",
+19         body: fd,
+20       });
+21 
+22       let errorMsg = "Erro ao importar conteúdos";
+23       let data: any = null;
+24       try { data = await res.json(); } catch {}
+25       if (!res.ok || !data?.ok) {
+26         if (data?.error) {
+27           if (typeof data.error === "string") errorMsg = data.error;
+28           else if (data.error?.formErrors?.formErrors?.length) errorMsg = data.error.formErrors.formErrors.join("\n");
+29           else if (data.error?.fieldErrors) errorMsg = JSON.stringify(data.error.fieldErrors);
+30         }
+31         throw new Error(errorMsg);
+32       }
+33 
+34       // sucesso: recarrega a lista
+35       setUploadFile(null);
+36       setUploadName(null);
+37       if (fileRef.current) fileRef.current.value = "";
+38       window.location.reload();
+39     } catch (e: any) {
+40       alert(e?.message || "Erro ao importar conteúdos");
+41       console.error(e);
+42     } finally {
+43       setImporting(false);
+44     }
+45   }
+46 
+47   return (
+48     <section className="mt-8 rounded-2xl border bg-white">
+49       <div className="border-b px-5 py-5">
+50         <h3 className="text-sm font-semibold text-gray-900">Importar conteúdos por planilha</h3>
+51         <p className="mt-1 text-xs text-gray-600">
+52           Formatos aceitos: <b>.csv</b>, <b>.xlsx</b>. Mantenha o cabeçalho: <b>Aula, Título, Conteúdo da Aula, Objetivos, Desenvolvimento das Atividades, Recursos Didáticos, BNCC</b>.
+53         </p>
+54       </div>
+55 
+56       <div className="px-5 py-5">
+57         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+58           <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+59           <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+60 
+61           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+62             <input
+63               ref={fileRef}
+64               type="file"
+65               accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+66               className="hidden"
+67               id="contents-file-input"
+68               onChange={(e) => {
+69                 const f = e.target.files?.[0] || null;
+70                 setUploadName(f ? f.name : null);
+71                 setUploadFile(f);
+72               }}
+73             />
+74             <label
+75               htmlFor="contents-file-input"
+76               className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+77             >
+78               Escolher arquivo
+79             </label>
+80 
+81             <button
+82               type="button"
+83               onClick={handleImportSend}
+84               disabled={!uploadFile || importing}
+85               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+86             >
+87               {importing ? "Enviando..." : "Enviar planilha"}
+88             </button>
+89           </div>
+90 
+91           {uploadName && (
+92             <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>
+93           )}
+94 
+95           <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+96             <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.csv" target="_blank" rel="noreferrer">
+97               Baixar modelo CSV
+98             </a>
+99             <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/contents.xlsx" target="_blank" rel="noreferrer">
+100               Baixar modelo XLSX
+101             </a>
+102           </div>
+103         </div>
+104       </div>
+105     </section>
+106   );
+107 }
+
+===== app/(auth)/login/page.tsx =====
+1 import LoginCard from "@/components/LoginCard";
+2 
+3 export default function LoginPage() {
+4   return (
+5     <main className="min-h-screen flex items-center justify-center p-6 bg-white">
+6       <LoginCard />
+7     </main>
+8   );
+9 }
+
+===== app/(auth)/register/page.tsx =====
+1 "use client";
+2 import { useState } from "react";
+3 import Link from "next/link";
+4 import { useRouter } from "next/navigation";
+5 
+6 // Helpers de máscara
+7 function onlyDigits(s: string) { return s.replace(/\D+/g, ""); }
+8 
+9 function maskCPF(v: string) {
+10   const d = onlyDigits(v).slice(0, 11);
+11   const p1 = d.slice(0,3);
+12   const p2 = d.slice(3,6);
+13   const p3 = d.slice(6,9);
+14   const p4 = d.slice(9,11);
+15   let out = p1;
+16   if (p2) out += "." + p2;
+17   if (p3) out += "." + p3;
+18   if (p4) out += "-" + p4;
+19   return out;
+20 }
+21 
+22 function maskPhoneBR(v: string) {
+23   const d = onlyDigits(v).slice(0, 11);
+24   const ddd = d.slice(0,2);
+25   const a = d.length > 10 ? d.slice(2,7) : d.slice(2,6);
+26   const b = d.length > 10 ? d.slice(7,11) : d.slice(6,10);
+27   let out = ddd ? `(${ddd}` : "";
+28   if (ddd && d.length >= 2) out += ") ";
+29   if (a) out += a;
+30   if (b) out += "-" + b;
+31   return out;
+32 }
+33 
+34 export default function RegisterPage() {
+35   const router = useRouter();
+36   const [form, setForm] = useState({
+37     name: "",
+38     cpf: "",
+39     birthDate: "",
+40     email: "",
+41     phone: "",
+42     password: "",
+43     confirmPassword: ""
+44   });
+45   const [loading, setLoading] = useState(false);
+46   const [err, setErr] = useState<string | null>(null);
+47 
+48   function update<K extends keyof typeof form>(k: K, v: string) {
+49     setForm((f) => ({ ...f, [k]: v }));
+50   }
+51 
+52   async function onSubmit(e: React.FormEvent) {
+53     e.preventDefault();
+54     setLoading(true);
+55     setErr(null);
+56 
+57     // normalizações
+58     const email = form.email.trim().toLowerCase();
+59     const cpf = form.cpf.trim();
+60     const phone = form.phone.trim();
+61     const name = form.name.trim();
+62 
+63     if (form.password.length < 8) {
+64       setErr("A senha deve ter pelo menos 8 caracteres");
+65       setLoading(false);
+66       return;
+67     }
+68     if (form.password !== form.confirmPassword) {
+69       setErr("As senhas não conferem");
+70       setLoading(false);
+71       return;
+72     }
+73     // Validações básicas de client
+74     if (onlyDigits(cpf).length !== 11) {
+75       setErr("CPF inválido");
+76       setLoading(false);
+77       return;
+78     }
+79     const phoneDigits = onlyDigits(phone);
+80     if (!(phoneDigits.length === 10 || phoneDigits.length === 11)) {
+81       setErr("Telefone inválido");
+82       setLoading(false);
+83       return;
+84     }
+85     if (!form.birthDate) {
+86       setErr("Informe a data de nascimento");
+87       setLoading(false);
+88       return;
+89     }
+90 
+91     try {
+92       const res = await fetch("/api/auth/register", {
+93         method: "POST",
+94         headers: { "content-type": "application/json" },
+95         body: JSON.stringify({
+96           ...form,
+97           name,
+98           cpf,        // API já remove dígitos; máscara ok
+99           phone,      // idem
+100           email       // normalizado
+101         })
+102       });
+103       const data = await res.json().catch(()=> ({}));
+104       if (!res.ok || !data?.ok) {
+105         setErr(data?.error ?? "Erro ao criar conta");
+106       } else {
+107         router.push("/login");
+108       }
+109     } catch {
+110       setErr("Falha de rede. Tente novamente.");
+111     } finally {
+112       setLoading(false);
+113     }
+114   }
+115 
+116   return (
+117     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+118       <section className="hidden lg:flex items-center justify-center bg-[var(--color-brand-blue)] text-white">
+119         <div className="max-w-xl px-8">
+120           <h2 className="text-4xl font-extrabold leading-tight">
+121             Crie sua conta EDUCC
+122           </h2>
+123           <p className="mt-4 text-white/90">
+124             Acesso rápido e seguro.
+125           </p>
+126         </div>
+127       </section>
+128 
+129       <section className="flex items-center justify-center p-6 lg:p-12">
+130         <div className="card p-8 max-w-lg w-full">
+131           <div className="flex items-center justify-between mb-6">
+132             <div className="flex items-center gap-3">
+133               <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+134               <span className="font-semibold">EDUCC</span>
+135             </div>
+136             <Link href="/login" className="text-sm text-[var(--color-brand-blue)] hover:underline">
+137               Já tenho conta
+138             </Link>
+139           </div>
+140 
+141           <h1 className="text-2xl font-semibold mb-1">Criar conta</h1>
+142           <p className="text-sm text-gray-500 mb-6">Preencha seus dados</p>
+143 
+144           <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+145             <div className="sm:col-span-2">
+146               <label className="block text-sm mb-1">Nome completo</label>
+147               <input
+148                 className="input"
+149                 value={form.name}
+150                 onChange={e=>update("name", e.target.value)}
+151                 required
+152                 autoComplete="name"
+153               />
+154             </div>
+155 
+156             <div>
+157               <label className="block text-sm mb-1">CPF</label>
+158               <input
+159                 className="input"
+160                 inputMode="numeric"
+161                 placeholder="000.000.000-00"
+162                 value={form.cpf}
+163                 onChange={(e) => update("cpf", maskCPF(e.target.value))}
+164                 maxLength={14}                             
+165                 required
+166                 pattern="^\d{3}\.\d{3}\.\d{3}-\d{2}$"
+167                 title="Formato: 000.000.000-00"
+168                 autoComplete="off"
+169               />
+170             </div>
+171 
+172             <div>
+173               <label className="block text-sm mb-1">Data de nascimento</label>
+174               <input
+175                 className="input"
+176                 type="date"
+177                 value={form.birthDate}
+178                 onChange={e=>update("birthDate", e.target.value)}
+179                 required
+180                 autoComplete="bday"
+181               />
+182             </div>
+183 
+184             <div>
+185               <label className="block text-sm mb-1">E-mail</label>
+186               <input
+187                 className="input"
+188                 type="email"
+189                 placeholder="exemplo@email.com"
+190                 value={form.email}
+191                 onChange={(e) => update("email", e.target.value.trim())}
+192                 required
+193                 autoComplete="email"
+194               />
+195             </div>
+196 
+197             <div>
+198               <label className="block text-sm mb-1">Telefone (Whats)</label>
+199               <input
+200                 className="input"
+201                 type="tel"
+202                 inputMode="tel"
+203                 placeholder="(00) 00000-0000"
+204                 value={form.phone}
+205                 onChange={(e) => update("phone", maskPhoneBR(e.target.value))}
+206                 maxLength={15}
+207                 required
+208                 pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"
+209                 title="Formato: (00) 00000-0000"
+210                 autoComplete="tel"
+211               />
+212             </div>
+213 
+214             <div>
+215               <label className="block text-sm mb-1">Senha</label>
+216               <input
+217                 className="input"
+218                 type="password"
+219                 value={form.password}
+220                 onChange={e=>update("password", e.target.value)}
+221                 required
+222                 minLength={8}
+223                 autoComplete="new-password"
+224               />
+225             </div>
+226 
+227             <div>
+228               <label className="block text-sm mb-1">Confirmar senha</label>
+229               <input
+230                 className="input"
+231                 type="password"
+232                 value={form.confirmPassword}
+233                 onChange={e=>update("confirmPassword", e.target.value)}
+234                 required
+235                 minLength={8}
+236                 autoComplete="new-password"
+237               />
+238             </div>
+239 
+240             {err && <p className="sm:col-span-2 text-sm text-red-600">{err}</p>}
+241 
+242             <div className="sm:col-span-2">
+243               <button type="submit" className="btn-primary w-full" disabled={loading}>
+244                 {loading ? "Criando..." : "Criar conta"}
+245               </button>
+246             </div>
+247           </form>
+248         </div>
+249       </section>
+250     </main>
+251   );
+252 }

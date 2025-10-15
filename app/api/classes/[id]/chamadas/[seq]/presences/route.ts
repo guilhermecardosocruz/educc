@@ -28,7 +28,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // valida turma (dona do user; ajuste se usar outro ACL)
   const cls = await prisma.class.findFirst({
-    where: { id, ownerId: user.id },
+    where: { id },
     select: { id: true }
   });
   if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada." }, { status: 404 });

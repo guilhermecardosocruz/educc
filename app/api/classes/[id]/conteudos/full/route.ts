@@ -7,7 +7,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status:401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true }});
+  const cls = await prisma.class.findFirst({ where: { id }, select: { id:true }});
   if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
 
   const list = await prisma.content.findMany({

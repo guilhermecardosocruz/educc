@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 import { z } from "zod";
 
 /** Serialização do bodyHtml em seções e vice-versa */
@@ -12,6 +12,7 @@ function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos
   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
   return b.join("\n");
 }
+
 function fromBodyHtml(html?: string) {
   const out: Record<string,string> = {};
   if (!html) return out;
@@ -28,7 +29,7 @@ function fromBodyHtml(html?: string) {
 }
 
 const patchSchema = z.object({
-  title: z.string().trim().min(1).optional(), // "nome da aula" pode editar mas não é obrigatório no PATCH
+  title: z.string().trim().min(1).optional(),
   objetivos: z.string().optional(),
   desenvolvimento: z.string().optional(),
   recursos: z.string().optional(),
@@ -40,8 +41,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true } });
-  if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+  const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
 
   const content = await prisma.content.findFirst({
     where: { classId: id, seq: Number(seq) },
@@ -58,8 +59,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true } });
-  if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+  const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
 
   const body = await req.json().catch(()=> ({}));
   const parsed = patchSchema.safeParse(body);
@@ -96,13 +98,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id:true } });
-  if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+  const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
 
   const content = await prisma.content.findFirst({ where: { classId: id, seq: Number(seq) }, select: { id:true } });
   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
 
   await prisma.content.delete({ where: { id: content.id } });
-
   return NextResponse.json({ ok:true });
 }

@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { ClassRole } from "@prisma/client";
 
 const COOKIE_NAME = "session_user_id";
 
@@ -39,4 +40,37 @@ export async function clearSessionCookie() {
     path: "/",
     maxAge: 0
   });
+}
+
+// === Access helpers (ClassAccess) ============================================
+
+/**
+ * Retorna o papel do usuário na turma (PROFESSOR | GESTOR) ou null se não tem acesso.
+ */
+export async function getRole(userId: string, classId: string): Promise<ClassRole | null> {
+  try {
+    const row = await prisma.classAccess.findFirst({
+      where: { classId, userId },
+      select: { role: true },
+    });
+    return row?.role ?? null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** Versão que usa o usuário logado da sessão atual. */
+export async function getMyRole(classId: string): Promise<ClassRole | null> {
+  const me = await requireUser();
+  if (!me) return null;
+  return getRole(me.id, classId);
+}
+
+/** Açúcares para checagens rápidas na UI/rota. */
+export function roleFlags(role: ClassRole | null) {
+  return {
+    isProfessor: role === "PROFESSOR",
+    isGestor: role === "GESTOR",
+    hasAccess: role === "PROFESSOR" || role === "GESTOR",
+  };
 }

@@ -1,0 +1,616 @@
+
+===== prisma/schema.prisma =====
+1 generator client {
+2   provider = "prisma-client-js"
+3 }
+4 
+5 datasource db {
+6   provider  = "postgresql"
+7   url       = env("DATABASE_URL")
+8   directUrl = env("DIRECT_URL")
+9 }
+10 
+11 model User {
+12   id           String   @id @default(cuid())
+13   name         String
+14   cpf          String   @unique
+15   birthDate    DateTime
+16   email        String   @unique
+17   phone        String
+18   createdAt    DateTime @default(now())
+19   passwordHash String?
+20 
+21   resetTokens   PasswordResetToken[]
+22   classes       Class[]              @relation("UserClasses")
+23   // Back-relations adicionados automaticamente
+24   classAccesses ClassAccess[]
+25   shareLinks    ShareLink[]
+26   auditLogs     AuditLog[]
+27 }
+28 
+29 model PasswordResetToken {
+30   id        String    @id @default(cuid())
+31   token     String    @unique
+32   userId    String
+33   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+34   expiresAt DateTime
+35   usedAt    DateTime?
+36   createdAt DateTime  @default(now())
+37 }
+38 
+39 model Class {
+40   id        String   @id @default(cuid())
+41   name      String
+42   ownerId   String
+43   owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+44   createdAt DateTime @default(now())
+45 
+46   attendances Attendance[]
+47   contents    Content[]
+48   students    Student[]
+49   // Back-relations adicionados automaticamente
+50   accesses    ClassAccess[]
+51   shareLinks  ShareLink[]
+52   auditLogs   AuditLog[]
+53 }
+54 
+55 model Attendance {
+56   id         String    @id @default(cuid())
+57   classId    String
+58   cls        Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+59   seq        Int
+60   title      String    @default("Chamada")
+61   createdAt  DateTime  @default(now())
+62   lessonDate DateTime? // data editável da aula (UTC, opcional)
+63 
+64   @@unique([classId, seq])
+65 }
+66 
+67 model Content {
+68   id        String   @id @default(cuid())
+69   classId   String
+70   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+71   seq       Int
+72   title     String   @default("Conteúdo")
+73   bodyHtml  String? // futuro: editor; por enquanto pode ficar vazio
+74   createdAt DateTime @default(now())
+75 
+76   @@unique([classId, seq])
+77 }
+78 
+79 model Student {
+80   id        String   @id @default(cuid())
+81   classId   String
+82   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+83   name      String
+84   cpf       String?
+85   contact   String? // whatsapp/email/telefone
+86   createdAt DateTime @default(now())
+87 }
+88 
+89 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+90 
+91 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+92 model AttendancePresence {
+93   id        String   @id @default(cuid())
+94   classId   String
+95   seq       Int
+96   studentId String
+97   present   Boolean  @default(false)
+98   createdAt DateTime @default(now())
+99   updatedAt DateTime @updatedAt
+100 
+101   // Sem relações Prisma para não exigir back-relations agora.
+102   @@unique([classId, seq, studentId], name: "class_seq_student_unique")
+103   @@index([classId, seq], name: "class_seq_idx")
+104 }
+105 
+106 // ====== CONTROLE DE ACESSO / LINKS / AUDITORIA ======
+107 
+108 /// Papéis por turma:
+109 /// - PROFESSOR: único por turma (garantido por índice único parcial na migração)
+110 /// - GESTOR: ilimitado
+111 enum ClassRole {
+112   PROFESSOR
+113   GESTOR
+114 }
+115 
+116 /// Relação usuário ↔ turma com papel
+117 model ClassAccess {
+118   id        String    @id @default(cuid())
+119   classId   String
+120   userId    String
+121   role      ClassRole
+122   createdAt DateTime  @default(now())
+123 
+124   // Relations
+125   cls  Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+126   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+127 
+128   // Um usuário não pode ter dois papéis simultâneos na mesma turma
+129   @@unique([classId, userId], name: "class_user_unique")
+130   @@index([classId])
+131   @@index([userId])
+132 }
+133 
+134 /// Link compartilhável para entrar na turma com um papel
+135 model ShareLink {
+136   id            String    @id @default(cuid())
+137   classId       String
+138   token         String    @unique
+139   role          ClassRole
+140   createdBy     String
+141   isRevoked     Boolean   @default(false)
+142   isPromotional Boolean   @default(false) // criador ainda professor -> 1º claim promove criador a GESTOR e dá PROF. ao convidado
+143   usedAt        DateTime?
+144   createdAt     DateTime  @default(now())
+145 
+146   // Relations
+147   cls    Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+148   author User  @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+149 
+150   @@index([classId])
+151   @@index([createdBy])
+152 }
+153 
+154 /// Auditoria de ações sensíveis
+155 model AuditLog {
+156   id        String   @id @default(cuid())
+157   classId   String
+158   actorId   String?
+159   type      String // ex.: LINK_CREATED, LINK_CLAIMED, CLAIM_BLOCKED_PROFESSOR_EXISTS, ACCESS_REVOKED, CREATOR_PROMOTED
+160   metadata  Json?
+161   createdAt DateTime @default(now())
+162 
+163   cls   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+164   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+165 
+166   @@index([classId, createdAt])
+167   @@index([actorId])
+168 }
+
+===== app/api/classes/[id]/chamadas/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 const createSchema = z.object({
+7   title: z.string().trim().min(1).max(100).optional().default("Chamada")
+8   ,
+9   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() // YYYY-MM-DD
+10 });
+11 
+12 // GET: lista chamadas (order por seq)
+13 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+14   const { id } = await ctx.params;
+15   const user = await requireUser();
+16   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+17 
+18     const role = await getRole(user.id, id);
+19   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+20 const { searchParams } = new URL(req.url);
+21   const order = searchParams.get("order") === "asc" ? "asc" : "desc";
+22 
+23   const items = await prisma.attendance.findMany({
+24     where: { classId: id },
+25     orderBy: { seq: order },
+26     select: { id: true, seq: true, title: true, createdAt: true }
+27   });
+28 
+29   return NextResponse.json({ ok:true, attendances: items });
+30 
+31 // POST: cria chamada e garante conteúdo com mesmo seq
+32 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+33   const { id } = await ctx.params;
+34   const user = await requireUser();
+35   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+36 
+37     const role = await getRole(user.id, id);
+38   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+39   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+40 const body = await req.json().catch(()=> ({}));
+41   const parsed = createSchema.safeParse(body);
+42   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+43 
+44   const result = await prisma.$transaction(async (tx) => {
+45     const last = await tx.attendance.findFirst({
+46       where: { classId: id },
+47       orderBy: { seq: "desc" },
+48       select: { seq: true }
+49     });
+50     const nextSeq = (last?.seq ?? 0) + 1;
+51 
+52     // data editável (UTC 00:00) — hoje por padrão
+53     const __now = new Date();
+54     const __todayUTC = new Date(Date.UTC(__now.getUTCFullYear(), __now.getUTCMonth(), __now.getUTCDate()));
+55     const lessonDate = (parsed.data.lessonDate ? new Date(parsed.data.lessonDate + 'T00:00:00.000Z') : __todayUTC);
+56 
+57     const attendance = await tx.attendance.create({
+58       data: {
+59         classId: id,
+60         seq: nextSeq,
+61         title: parsed.data.title || `Chamada ${nextSeq}`,
+62         lessonDate
+63       },
+64       select: { id: true, seq: true, title: true, createdAt: true, lessonDate: true }
+65     });
+66     // garante conteúdo com mesmo seq (se não existir)
+67     await tx.content.upsert({
+68       where: { classId_seq: { classId: id, seq: nextSeq } },
+69       update: {},
+70       create: {
+71         classId: id,
+72         seq: nextSeq,
+73         title: `Conteúdo ${nextSeq}`,
+74         bodyHtml: null
+75       }
+76     });
+77 
+78     return attendance;
+79   });
+80 
+81   return NextResponse.json({ ok:true, attendance: result }, { status: 201 });
+82 
+
+===== app/api/classes/[id]/chamadas/[seq]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+7   const { id, seq } = await ctx.params;
+8   const user = await requireUser();
+9   if (!user) return NextResponse.json({ ok: false }, { status: 401 })
+10   const role = await getRole(user.id, id);
+11   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+12   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+13 const seqNum = Number(seq);
+14   if (!Number.isFinite(seqNum)) {
+15     return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+16 
+17   try {
+18     // tente pela chave composta (se existir)
+19     await prisma.attendance.delete({
+20       where: { classId_seq: { classId: id, seq: seqNum } as any },
+21     });
+22     return NextResponse.json({ ok: true });
+23   } catch (e1) {
+24     try {
+25       // fallback: sem unique composto => apaga pelo filtro
+26       await prisma.attendance.deleteMany({
+27         where: { classId: id, seq: seqNum },
+28       });
+29       return NextResponse.json({ ok: true });
+30     } catch (e2) {
+31       console.error("DELETE chamada erro:", e2);
+32       return NextResponse.json({ ok: false, error: "Erro ao excluir chamada" }, { status: 500 });
+33 
+34   }
+35 }
+36 const updateSchema = z.object({
+37   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+38 });
+39 
+40 export async function PUT(req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+41   const { id, seq } = await ctx.params;
+42   const user = await requireUser();
+43   if (!user) return NextResponse.json({ ok: false }, { status: 401 })
+44   const role = await getRole(user.id, id);
+45   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+46   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+47 const seqNum = Number(seq);
+48   if (!Number.isFinite(seqNum)) return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+49 
+50   const body = await req.json().catch(() => ({}));
+51   const parsed = updateSchema.safeParse(body);
+52   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+53 
+54   const updateData: any = {};
+55   if (parsed.data.lessonDate) {
+56     updateData.lessonDate = new Date(parsed.data.lessonDate + 'T00:00:00.000Z');
+57 
+58   if (!Object.keys(updateData).length) return NextResponse.json({ ok: true, updated: 0 });
+59 
+60   await prisma.attendance.update({
+61     where: { classId_seq: { classId: id, seq: seqNum } as any },
+62     data: updateData
+63   });
+64 
+65   return NextResponse.json({ ok: true, updated: 1 });
+66 
+
+===== app/api/classes/[id]/conteudos/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 // Monta um HTML simples com as seções opcionais, para persistência única
+7 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+8   const b = [];
+9   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+10   if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+11   if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+12   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+13   return b.join("\n");
+14 
+15 const createSchema = z.object({
+16   title: z.string().trim().min(2, "Nome da aula é obrigatório"),
+17   objetivos: z.string().optional(),
+18   desenvolvimento: z.string().optional(),
+19   recursos: z.string().optional(),
+20   bncc: z.string().optional(),
+21 });
+22 
+23 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+24   const { id } = await params;
+25   const user = await requireUser();
+26   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+27 
+28   // checa turma do usuário
+29   const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
+30   if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
+31 
+32   const list = await prisma.content.findMany({
+33     where: { classId: id },
+34     orderBy: { seq: "asc" },
+35     select: { id: true, seq: true, title: true }
+36   });
+37 
+38   return NextResponse.json({ ok:true, list });
+39 
+40 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+41   const { id } = await params;
+42   const user = await requireUser();
+43   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+44 
+45     const role = await getRole(user.id, id);
+46   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+47 const body = await req.json().catch(()=> ({}));
+48   const parsed = createSchema.safeParse(body);
+49   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+50 
+51   // seq = último + 1
+52   const last = await prisma.content.findFirst({ where: { classId: id }, orderBy: { seq: "desc" }, select: { seq: true } });
+53   const nextSeq = (last?.seq ?? 0) + 1;
+54 
+55   const created = await prisma.content.create({
+56     data: {
+57       classId: id,
+58       seq: nextSeq,
+59       title: parsed.data.title,
+60       bodyHtml: toBodyHtml({
+61         objetivos: parsed.data.objetivos,
+62         desenvolvimento: parsed.data.desenvolvimento,
+63         recursos: parsed.data.recursos,
+64         bncc: parsed.data.bncc,
+65       }),
+66     },
+67     select: { id: true, seq: true, title: true }
+68   });
+69 
+70   return NextResponse.json({ ok:true, content: created }, { status: 201 });
+71 
+
+===== app/api/classes/[id]/conteudos/[seq]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 /** Serialização do bodyHtml em seções e vice-versa */
+7 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+8   const b = [];
+9   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+10   if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+11   if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+12   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+13   return b.join("\n");
+14 function fromBodyHtml(html?: string) {
+15   const out: Record<string,string> = {};
+16   if (!html) return out;
+17   const get = (title: string) => {
+18     const re = new RegExp(`<h3>\\s*${title}\\s*<\\/h3>\\s*<p>([\\s\\S]*?)<\\/p>`, "i");
+19     const m = html.match(re);
+20     return m ? m[1] : "";
+21   };
+22   out.objetivos = get("Objetivos");
+23   out.desenvolvimento = get("Desenvolvimento das Atividades");
+24   out.recursos = get("Recursos Pedagógicos");
+25   out.bncc = get("BNCC");
+26   return out;
+27 
+28 const patchSchema = z.object({
+29   title: z.string().trim().min(1).optional(), // "nome da aula" pode editar mas não é obrigatório no PATCH
+30   objetivos: z.string().optional(),
+31   desenvolvimento: z.string().optional(),
+32   recursos: z.string().optional(),
+33   bncc: z.string().optional(),
+34 });
+35 
+36 export async function GET(_req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+37   const { id, seq } = await params;
+38   const user = await requireUser();
+39   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+40 
+41     const role = await getRole(user.id, id);
+42   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+43 const content = await prisma.content.findFirst({
+44     where: { classId: id, seq: Number(seq) },
+45     select: { id:true, seq:true, title:true, bodyHtml:true }
+46   });
+47   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+48 
+49   const sections = fromBodyHtml(content.bodyHtml || "");
+50   return NextResponse.json({ ok:true, content: { ...content, ...sections } });
+51 
+52 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+53   const { id, seq } = await params;
+54   const user = await requireUser();
+55   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+56 
+57     const role = await getRole(user.id, id);
+58   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+59   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+60 const body = await req.json().catch(()=> ({}));
+61   const parsed = patchSchema.safeParse(body);
+62   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status:400 });
+63 
+64   const current = await prisma.content.findFirst({
+65     where: { classId: id, seq: Number(seq) },
+66     select: { id:true, title:true, bodyHtml:true, seq:true }
+67   });
+68   if (!current) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+69 
+70   const existing = fromBodyHtml(current.bodyHtml || "");
+71   const merged = {
+72     objetivos: parsed.data.objetivos ?? existing.objetivos ?? "",
+73     desenvolvimento: parsed.data.desenvolvimento ?? existing.desenvolvimento ?? "",
+74     recursos: parsed.data.recursos ?? existing.recursos ?? "",
+75     bncc: parsed.data.bncc ?? existing.bncc ?? "",
+76   };
+77 
+78   const updated = await prisma.content.update({
+79     where: { id: current.id },
+80     data: {
+81       title: parsed.data.title ?? current.title,
+82       bodyHtml: toBodyHtml(merged),
+83     },
+84     select: { id:true, seq:true, title:true, bodyHtml:true }
+85   });
+86 
+87   return NextResponse.json({ ok:true, content: updated });
+88 
+89 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+90   const { id, seq } = await params;
+91   const user = await requireUser();
+92   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+93 
+94     const role = await getRole(user.id, id);
+95   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+96   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+97 const content = await prisma.content.findFirst({ where: { classId: id, seq: Number(seq) }, select: { id:true } });
+98   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+99 
+100   await prisma.content.delete({ where: { id: content.id } });
+101 
+102   return NextResponse.json({ ok:true });
+103 
+
+===== app/api/classes/[id]/students/[studentId]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 import { Prisma } from "@prisma/client";
+6 
+7 const schema = z.object({
+8   name: z.string().trim().min(2, "Nome muito curto"),
+9 });
+10 
+11 // PATCH /api/classes/:id/students/:studentId  -> editar nome
+12 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; studentId: string }> }) {
+13   const { id, studentId } = await params;
+14   const user = await requireUser();
+15   if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
+16 
+17   const exists = await prisma.student.findFirst({
+18     where: { id: studentId, classId: id, cls: { ownerId: user.id } },
+19     select: { id: true },
+20   });
+21   if (!exists) return NextResponse.json({ ok: false, error: "Aluno não encontrado" }, { status: 404 });
+22 
+23   const body = await req.json().catch(() => ({}));
+24   const parsed = schema.safeParse(body);
+25   if (!parsed.success) {
+26     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+27 
+28   const updated = await prisma.student.update({
+29     where: { id: studentId },
+30     data: { name: parsed.data.name },
+31     select: { id: true, name: true, cpf: true, contact: true },
+32   });
+33 
+34   return NextResponse.json({ ok: true, student: updated });
+35 
+36 // DELETE /api/classes/:id/students/:studentId -> excluir aluno
+37 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; studentId: string }> }) {
+38   const { id, studentId } = await params;
+39   const user = await requireUser();
+40   if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
+41 
+42   const exists = await prisma.student.findFirst({
+43     where: { id: studentId, classId: id, cls: { ownerId: user.id } },
+44     select: { id: true },
+45   });
+46   if (!exists) return NextResponse.json({ ok: false, error: "Aluno não encontrado" }, { status: 404 });
+47 
+48   try {
+49     await prisma.student.delete({ where: { id: studentId } });
+50     return NextResponse.json({ ok: true });
+51   } catch (err: any) {
+52     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+53       return NextResponse.json(
+54         { ok: false, error: "Não foi possível excluir: o aluno está vinculado a presenças." },
+55         { status: 409 }
+56       );
+57 
+58     console.error("DELETE student error:", err);
+59     return NextResponse.json({ ok: false, error: "Erro interno ao excluir aluno." }, { status: 500 });
+60 
+61 }
+
+===== app/api/classes/[id]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 
+5 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+6   const { id } = await ctx.params;
+7   const user = await requireUser();
+8   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+9 
+10   const cls = await prisma.class.findFirst({
+11     where: { id },
+12     select: { id: true, name: true }
+13   });
+14   if (!cls) return NextResponse.json({ ok:false }, { status: 404 });
+15 
+16   return NextResponse.json({ ok:true, class: cls });
+17 }
+
+===== app/api/classes/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 
+5 export async function GET() {
+6   const user = await requireUser();
+7   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+8   const classes = await prisma.class.findMany({
+9     where: { ownerId: user.id },
+10     orderBy: { createdAt: "desc" },
+11     select: { id: true, name: true, createdAt: true }
+12   });
+13   return NextResponse.json({ ok:true, classes });
+14 }
+15 
+16 export async function POST(req: Request) {
+17   const user = await requireUser();
+18   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+19 
+20   const body = await req.json().catch(()=> ({}));
+21   const name = (body?.name ?? "").toString().trim();
+22   if (!name || name.length < 2) {
+23     return NextResponse.json({ ok:false, error: "Nome da turma inválido" }, { status: 400 });
+24   }
+25 
+26   const cls = await prisma.class.create({
+27     data: { name },
+28     select: { id: true, name: true, createdAt: true }
+29   });
+30 
+31   return NextResponse.json({ ok:true, class: cls }, { status: 201 });
+32 }

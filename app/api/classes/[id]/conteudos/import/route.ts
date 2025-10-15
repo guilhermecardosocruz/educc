@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,10 +57,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
-
-  const form = await req.formData();
+    const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+const form = await req.formData();
   const file = form.get("file") as File | null;
   if (!file) return NextResponse.json({ ok:false, error: "Arquivo ausente" }, { status: 400 });
 

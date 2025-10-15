@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 import { z } from "zod";
 
-// Monta um HTML simples com as seções opcionais, para persistência única
+// Monta um HTML simples com as seções opcionais
 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
   const b = [];
   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
@@ -26,10 +26,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  // checa turma do usuário
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
-
   const list = await prisma.content.findMany({
     where: { classId: id },
     orderBy: { seq: "asc" },
@@ -44,14 +40,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok:false, error: "Turma não encontrada" }, { status: 404 });
+  const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
 
   const body = await req.json().catch(()=> ({}));
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
 
-  // seq = último + 1
   const last = await prisma.content.findFirst({ where: { classId: id }, orderBy: { seq: "desc" }, select: { seq: true } });
   const nextSeq = (last?.seq ?? 0) + 1;
 
@@ -60,12 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       classId: id,
       seq: nextSeq,
       title: parsed.data.title,
-      bodyHtml: toBodyHtml({
-        objetivos: parsed.data.objetivos,
-        desenvolvimento: parsed.data.desenvolvimento,
-        recursos: parsed.data.recursos,
-        bncc: parsed.data.bncc,
-      }),
+      bodyHtml: toBodyHtml(parsed.data),
     },
     select: { id: true, seq: true, title: true }
   });

@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 import { z } from "zod";
 
 const createSchema = z.object({
-  title: z.string().trim().min(1).max(100).optional().default("Chamada")
-  ,
+  title: z.string().trim().min(1).max(100).optional().default("Chamada"),
   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() // YYYY-MM-DD
 });
 
@@ -15,8 +14,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok:false }, { status: 404 });
+  const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const order = searchParams.get("order") === "asc" ? "asc" : "desc";
@@ -36,8 +35,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok:false }, { status: 404 });
+  const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
 
   const body = await req.json().catch(()=> ({}));
   const parsed = createSchema.safeParse(body);
@@ -51,7 +51,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
     const nextSeq = (last?.seq ?? 0) + 1;
 
-    // data editável (UTC 00:00) — hoje por padrão
     const __now = new Date();
     const __todayUTC = new Date(Date.UTC(__now.getUTCFullYear(), __now.getUTCMonth(), __now.getUTCDate()));
     const lessonDate = (parsed.data.lessonDate ? new Date(parsed.data.lessonDate + 'T00:00:00.000Z') : __todayUTC);
@@ -65,7 +64,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       },
       select: { id: true, seq: true, title: true, createdAt: true, lessonDate: true }
     });
-    // garante conteúdo com mesmo seq (se não existir)
+
     await tx.content.upsert({
       where: { classId_seq: { classId: id, seq: nextSeq } },
       update: {},

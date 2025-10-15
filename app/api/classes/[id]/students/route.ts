@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
@@ -18,10 +18,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
-
-  const students = await prisma.student.findMany({
+    const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+const students = await prisma.student.findMany({
     where: { classId: id },
     orderBy: { name: "asc" },
     select: { id: true, name: true, cpf: true, contact: true },
@@ -35,10 +34,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({ where: { id, ownerId: user.id }, select: { id: true } });
-  if (!cls) return NextResponse.json({ ok: false, error: "Turma não encontrada" }, { status: 404 });
-
-  const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
+    const role = await getRole(user.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }

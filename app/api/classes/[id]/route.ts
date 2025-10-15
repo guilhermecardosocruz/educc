@@ -8,7 +8,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
   const cls = await prisma.class.findFirst({
-    where: { id, ownerId: user.id },
+    where: { id },
     select: { id: true, name: true }
   });
   if (!cls) return NextResponse.json({ ok:false }, { status: 404 });

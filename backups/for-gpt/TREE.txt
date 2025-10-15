@@ -96,6 +96,7 @@
 ├── backups/
 │   ├── for-gpt/
 │   │   ├── API.txt
+│   │   ├── AUTH_EDIT.txt
 │   │   ├── BUG_IMPORT_DEBUG.txt
 │   │   ├── CHAMADAS_EDIT_FULL.txt
 │   │   ├── CHAMADAS_EDIT.txt
@@ -166,7 +167,7 @@
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
-│   ├── fallback-wU3T6C_KC3TVLYdfMBN7l.js
+│   ├── fallback-3eKW-dxsifEijaHmLnSLQ.js
 │   ├── file.svg
 │   ├── globe.svg
 │   ├── icons/
@@ -194,4 +195,4 @@
 ├── tsconfig.json
 └── tsconfig.tsbuildinfo
 
-53 directories, 141 files
+53 directories, 142 files

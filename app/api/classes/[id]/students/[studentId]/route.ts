@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
@@ -8,7 +8,7 @@ const schema = z.object({
   name: z.string().trim().min(2, "Nome muito curto"),
 });
 
-// PATCH /api/classes/:id/students/:studentId  -> editar nome
+// PATCH
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; studentId: string }> }) {
   const { id, studentId } = await params;
   const user = await requireUser();
@@ -35,7 +35,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   return NextResponse.json({ ok: true, student: updated });
 }
 
-// DELETE /api/classes/:id/students/:studentId -> excluir aluno
+// DELETE
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; studentId: string }> }) {
   const { id, studentId } = await params;
   const user = await requireUser();
