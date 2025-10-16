@@ -6,23 +6,16 @@ export async function GET() {
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const rows = await prisma.class.findMany({
-    where: { accesses: { some: { userId: user.id } } },
+  const classes = await prisma.class.findMany({
+    where: {
+      OR: [
+        { ownerId: user.id },
+        { accesses: { some: { userId: user.id } } }
+      ]
+    },
     orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      createdAt: true,
-      accesses: { where: { userId: user.id }, select: { role: true }, take: 1 }
-    }
+    select: { id: true, name: true, createdAt: true }
   });
-
-  const classes = rows.map(r => ({
-    id: r.id,
-    name: r.name,
-    createdAt: r.createdAt,
-    role: r.accesses[0]?.role ?? null
-  }));
 
   return NextResponse.json({ ok:true, classes });
 }
@@ -42,7 +35,10 @@ export async function POST(req: Request) {
       name,
       ownerId: user.id,
       accesses: {
-        create: { userId: user.id, role: "PROFESSOR" }
+        create: {
+          userId: user.id,
+          role: "PROFESSOR"
+        }
       }
     },
     select: { id: true, name: true, createdAt: true }
