@@ -1,0 +1,151 @@
+
+===== package.json =====
+1 {
+2   "name": "educc",
+3   "private": true,
+4   "version": "0.1.0",
+5   "type": "module",
+6   "scripts": {
+7     "dev": "next dev",
+8     "build": "pnpm prisma:gen && next build",
+9     "start": "next start",
+10     "typecheck": "tsc --noEmit",
+11     "prisma:gen": "prisma generate",
+12     "prisma:push": "prisma db push",
+13     "prisma:studio": "prisma studio",
+14     "postinstall": "prisma generate",
+15     "icons": "tsx scripts/generate-icons.ts",
+16     "lint": "eslint ."
+17   },
+18   "dependencies": {
+19     "@prisma/client": "^6.17.0",
+20     "bcryptjs": "^3.0.2",
+21     "csv-parse": "^6.1.0",
+22     "lucide-react": "^0.453.0",
+23     "next": "15.0.0",
+24     "next-pwa": "^5.6.0",
+25     "react": "19.0.0",
+26     "react-dom": "19.0.0",
+27     "zod": "^3.23.8"
+28   },
+29   "devDependencies": {
+30     "@babel/core": "^7.28.4",
+31     "@eslint/eslintrc": "^3.3.1",
+32     "@tailwindcss/postcss": "4.1.14",
+33     "@types/node": "^22.7.4",
+34     "@types/react": "^19.0.0",
+35     "babel-loader": "^10.0.0",
+36     "eslint": "^9.37.0",
+37     "eslint-config-next": "^15.5.4",
+38     "prisma": "^6.17.0",
+39     "sharp": "^0.34.4",
+40     "tailwindcss": "4.1.14",
+41     "tsx": "^4.20.6",
+42     "typescript": "^5.6.3",
+43     "xlsx": "^0.18.5"
+44   },
+45   "engines": {
+46     "node": "^20"
+47   },
+48   "pnpm": {
+49     "allowScripts": {
+50       "@prisma/client": true,
+51       "prisma": true,
+52       "@tailwindcss/oxide": true,
+53       "sharp": true
+54     }
+55   }
+56 }
+
+===== next.config.mjs =====
+1 // next.config.mjs — PWA habilitado em produção
+2 import withPWA from 'next-pwa';
+3 
+4 const isDev = process.env.NODE_ENV !== 'production';
+5 
+6 export default withPWA({
+7   dest: 'public',
+8   register: true,
+9   skipWaiting: true,
+10   disable: isDev,
+11   fallbacks: { document: '/offline' },
+12   // Ajustes finos de cache (opcional)
+13   runtimeCaching: [
+14     {
+15       urlPattern: ({ request }) => request.destination === 'image',
+16       handler: 'CacheFirst',
+17       options: { cacheName: 'images', expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 } }
+18     },
+19     {
+20       urlPattern: ({ request }) => ['style','script','font'].includes(request.destination),
+21       handler: 'StaleWhileRevalidate',
+22       options: { cacheName: 'assets' }
+23     }
+24   ]
+25 })({
+26   // Outras opções do projeto (se precisar)
+27 });
+
+===== .eslintrc.js =====
+[MISSING] .eslintrc.js
+
+===== .eslintrc.cjs =====
+1 /** ESLint brando para permitir build/dev sem travar */
+2 module.exports = {
+3   root: true,
+4   extends: ["next/core-web-vitals", "eslint:recommended"],
+5   parserOptions: { ecmaVersion: 2022, sourceType: "module" },
+6   rules: {
+7     // Tipos
+8     "@typescript-eslint/no-explicit-any": "off",
+9     "@typescript-eslint/ban-ts-comment": "off",
+10     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+11     // Preferências
+12     "prefer-const": "warn",
+13     // React
+14     "react/no-unescaped-entities": "off",
+15     // Hooks
+16     "react-hooks/exhaustive-deps": "warn",
+17   },
+18 };
+
+===== .eslintrc.json =====
+[MISSING] .eslintrc.json
+
+===== .eslintrc.yml =====
+[MISSING] .eslintrc.yml
+
+===== .eslintrc.yaml =====
+[MISSING] .eslintrc.yaml
+
+===== .eslint.config.js =====
+[MISSING] .eslint.config.js
+
+===== tsconfig.json =====
+1 {
+2   "compilerOptions": {
+3     "target": "ES2017",
+4     "lib": ["dom", "dom.iterable", "esnext"],
+5     "allowJs": true,
+6     "skipLibCheck": true,
+7     "strict": true,
+8     "noEmit": true,
+9     "esModuleInterop": true,
+10     "module": "esnext",
+11     "moduleResolution": "bundler",
+12     "resolveJsonModule": true,
+13     "isolatedModules": true,
+14     "jsx": "preserve",
+15     "incremental": true,
+16     "plugins": [
+17       {
+18         "name": "next"
+19       }
+20     ],
+21     "paths": {
+22       "@/*": ["./*"]
+23     }
+24   },
+25   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+26   "exclude": ["node_modules"]
+27 }

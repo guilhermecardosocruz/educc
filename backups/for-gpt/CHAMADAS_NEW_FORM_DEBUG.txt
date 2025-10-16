@@ -1,0 +1,1765 @@
+
+===== app/classes/[id]/chamadas/new/page.tsx =====
+1 "use client";
+2 
+3 import Link from "next/link";
+4 import { useRouter, useParams } from "next/navigation";
+5 import { useEffect, useMemo, useRef, useState } from "react";
+6 
+7 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
+8 
+9 export default function NewCallPage() {
+10   const router = useRouter();
+11   const { id } = useParams<{ id: string }>();
+12 
+13   const [title, setTitle] = useState("");
+14   const [lessonDate, setLessonDate] = useState<string>(() => {
+15     const now = new Date();
+16     const yyyy = now.getFullYear();
+17     const mm = String(now.getMonth() + 1).padStart(2, '0');
+18     const dd = String(now.getDate()).padStart(2, '0');
+19     return `${yyyy}-${mm}-${dd}`;
+20   });
+21   const [students, setStudents] = useState<Student[]>([]);
+22   const [presence, setPresence] = useState<Record<string, boolean>>({});
+23   const [saving, setSaving] = useState(false);
+24 
+25   // Adicionar aluno
+26   const [showAdd, setShowAdd] = useState(false);
+27   const [newName, setNewName] = useState("");
+28   const [newCpf, setNewCpf] = useState("");
+29   const [newContact, setNewContact] = useState("");
+30   const [adding, setAdding] = useState(false);
+31 
+32   // Import planilha
+33   const [uploadName, setUploadName] = useState<string | null>(null);
+34   const [uploadFile, setUploadFile] = useState<File | null>(null);
+35   const [importing, setImporting] = useState(false);
+36   const fileRef = useRef<HTMLInputElement | null>(null);
+37 
+38   // Editar aluno (modal)
+39   const [editId, setEditId] = useState<string | null>(null);
+40   const [editName, setEditName] = useState("");
+41 
+42   useEffect(() => {
+43     (async () => {
+44       if (!id) return;
+45       const res = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+46       const data = await res.json();
+47       if (data?.ok && Array.isArray(data.students)) {
+48         setStudents(data.students);
+49         const initial: Record<string, boolean> = {};
+50         for (const s of data.students) initial[s.id] = true;
+51         setPresence(initial);
+52       }
+53     })();
+54   }, [id]);
+55 
+56   function toggleStudent(studentId: string) {
+57     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+58   }
+59   function setAll(v: boolean) {
+60     const all: Record<string, boolean> = {};
+61     for (const s of students) all[s.id] = v;
+62     setPresence(all);
+63   }
+64 
+65   // Modal editar (duplo clique no nome)
+66   function onDblClickStudent(st: Student) {
+67     setEditId(st.id);
+68     setEditName(st.name);
+69   }
+70   async function handleEditSave() {
+71     if (!id || !editId) return;
+72     const name = editName.trim();
+73     if (name.length < 2) {
+74       alert("Informe o nome (mínimo 2 caracteres).");
+75       return;
+76     }
+77     try {
+78       const res = await fetch(`/api/classes/${id}/students/${editId}`, {
+79         method: "PATCH",
+80         headers: { "content-type": "application/json" },
+81         body: JSON.stringify({ name }),
+82       });
+83       const data = await res.json().catch(() => ({}));
+84       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+85       setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
+86       setEditId(null);
+87       setEditName("");
+88     } catch (e: any) {
+89       alert(e?.message || "Erro ao salvar");
+90       console.error(e);
+91     }
+92   }
+93   async function handleEditDelete() {
+94     if (!id || !editId) return;
+95     if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+96     try {
+97       const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
+98       const data = await res.json().catch(() => ({}));
+99       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+100       setStudents(prev => prev.filter(s => s.id !== editId));
+101       setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+102       setEditId(null);
+103       setEditName("");
+104     } catch (e: any) {
+105       alert("Erro ao excluir aluno");
+106       console.error(e);
+107     }
+108   }
+109 
+110   // Adicionar aluno
+111   async function handleAddStudent() {
+112     if (!id) return;
+113     const name = newName.trim();
+114     const cpf = newCpf.trim();
+115     const contact = newContact.trim();
+116     if (name.length < 2) {
+117       alert("Informe o nome (mínimo 2 caracteres).");
+118       return;
+119     }
+120     setAdding(true);
+121     try {
+122       const body: any = { name };
+123       if (cpf.length) body.cpf = cpf;
+124       if (contact.length) body.contact = contact;
+125 
+126       const res = await fetch(`/api/classes/${id}/students`, {
+127         method: "POST",
+128         headers: { "content-type": "application/json" },
+129         body: JSON.stringify(body)
+130       });
+131       let payload: any = null;
+132       try { payload = await res.json(); } catch {}
+133       if (!res.ok || !payload?.ok) {
+134         let msg = "Erro ao adicionar aluno";
+135         const e = payload?.error;
+136         if (typeof e === "string") msg = e;
+137         else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+138         else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+139         throw new Error(msg);
+140       }
+141 
+142       const st: Student = payload.student;
+143       setStudents((prev) => [st, ...prev]);
+144       setPresence((p) => ({ ...p, [st.id]: true }));
+145       setNewName(""); setNewCpf(""); setNewContact("");
+146       setShowAdd(false);
+147     } catch (e: any) {
+148       alert(e?.message || "Erro ao adicionar aluno");
+149       console.error(e);
+150     } finally {
+151       setAdding(false);
+152     }
+153   }
+154 
+155   // Importação CSV/XLSX
+156   async function __handleImportSend() {
+157     if (!id || !uploadFile) {
+158       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+159       return;
+160     }
+161     setImporting(true);
+162     try {
+163       const fd = new FormData();
+164       fd.append("file", uploadFile);
+165       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
+166       const data = await res.json();
+167       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+168 
+169       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+170       const data2 = await res2.json();
+171       if (data2?.ok && Array.isArray(data2.students)) {
+172         setStudents(data2.students);
+173         const next: Record<string, boolean> = {};
+174         for (const s of data2.students) next[s.id] = true;
+175         setPresence(next);
+176       }
+177       setUploadName(null); setUploadFile(null);
+178       if (fileRef.current) fileRef.current.value = "";
+179     } catch (e) {
+180       const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+181       console.error(e);
+182     } finally {
+183       setImporting(false);
+184     }
+185   }
+186 
+187   // Criar chamada + presenças
+188   async function handleCreate() {
+189     if (!id) return;
+190     setSaving(true);
+191     try {
+192       const res = await fetch(`/api/classes/${id}/chamadas`, {
+193         method: "POST",
+194         headers: { "content-type": "application/json" },
+195         body: JSON.stringify({ title: title.trim() || undefined, lessonDate: lessonDate || undefined })
+196       });
+197       const data = await res.json();
+198       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+199 
+200       const seq: number = data.attendance.seq;
+201       const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+202 
+203       const res2 = await fetch(`/api/classes/${id}/chamadas/${seq}/presences`, {
+204         method: "POST",
+205         headers: { "content-type": "application/json" },
+206         body: JSON.stringify({ presences })
+207       });
+208       const d2 = await res2.json();
+209       if (!res2.ok || !d2?.ok) throw new Error(d2?.error || "Falha ao salvar presenças");
+210 
+211       router.push(`/classes/${id}/chamadas`);
+212     } catch (e) {
+213       alert("Erro ao criar/salvar chamada");
+214       console.error(e);
+215     } finally {
+216       setSaving(false);
+217     }
+218   }
+219 
+220   const totalPresentes = useMemo(
+221     () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+222     [students, presence]
+223   );
+224 
+225   return (
+226     <main className="mx-auto max-w-5xl px-4 py-6">
+227       <nav className="mb-4 text-sm">
+228         <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">Voltar para Chamadas</Link>
+229       </nav>
+230 
+231       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+232         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+233           <div>
+234             <h1 className="text-xl font-semibold text-gray-900">Nova chamada</h1>
+235             <p className="text-sm text-gray-600">Marque a presença e crie a chamada desta aula.</p>
+236           </div>
+237 
+238           {/* Título + Data (desktop na mesma linha, mobile quebra) */}
+239           <div className="flex flex-wrap items-end gap-4">
+240             <div className="text-right">
+241               <div className="text-xs text-gray-500">Nome da aula</div>
+242               <input
+243                 value={title}
+244                 onChange={(e) => setTitle(e.target.value)}
+245                 placeholder="Ex.: Aula 01 - Introdução"
+246                 className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+247               />
+248             </div>
+249             <div className="min-w-40">
+250               <div className="text-xs text-gray-500">Data</div>
+251               <input
+252                 type="date"
+253                 value={lessonDate}
+254                 onChange={(e) => setLessonDate(e.target.value)}
+255                 className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+256               />
+257             </div>
+258           </div>
+259         </div>
+260 
+261         <div className="space-y-5 px-5 py-5">
+262           {/* Adicionar aluno */}
+263           {showAdd && (
+264             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+265               <div className="grid gap-3 md:grid-cols-3">
+266                 <div className="grid gap-1">
+267                   <label className="text-xs font-medium text-gray-700">Nome</label>
+268                   <input
+269                     value={newName}
+270                     onChange={(e) => setNewName(e.target.value)}
+271                     placeholder="Ex.: Maria Silva"
+272                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+273                   />
+274                 </div>
+275                 <div className="grid gap-1">
+276                   <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+277                   <input
+278                     value={newCpf}
+279                     onChange={(e) => setNewCpf(e.target.value)}
+280                     placeholder="Somente números"
+281                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+282                   />
+283                 </div>
+284                 <div className="grid gap-1">
+285                   <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+286                   <input
+287                     value={newContact}
+288                     onChange={(e) => setNewContact(e.target.value)}
+289                     placeholder="Ex.: (48) 99999-9999"
+290                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+291                   />
+292                 </div>
+293               </div>
+294               <div className="mt-3 flex items-center gap-2">
+295                 <button
+296                   type="button"
+297                   onClick={handleAddStudent}
+298                   disabled={adding || newName.trim().length < 2}
+299                   className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+300                 >
+301                   {adding ? "Adicionando..." : "Salvar aluno"}
+302                 </button>
+303                 <button
+304                   type="button"
+305                   onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+306                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+307                 >
+308                   Cancelar
+309                 </button>
+310               </div>
+311             </div>
+312           )}
+313 
+314           {/* Lista de presença */}
+315           <div className="rounded-2xl overflow-hidden border">
+316             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+317               <div className="font-semibold">Lista de presença</div>
+318               <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+319             </div>
+320 
+321             <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+322               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+323               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+324             </div>
+325 
+326             <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+327               <div className="px-1.5 py-2 text-center">#</div>
+328               <div className="px-3 py-2">Aluno</div>
+329               <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+330             </div>
+331 
+332             <div className="max-h-[60vh] overflow-auto">
+333               {students.length === 0 ? (
+334                 <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+335               ) : students.map((s, idx) => {
+336                 const isEven = idx % 2 === 0;
+337                 return (
+338                   <div
+339                     key={s.id}
+340                     className={[
+341                       "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+342                       "border-b border-blue-100",
+343                       isEven ? "bg-blue-50/40" : "bg-white"
+344                     ].join(" ")}
+345                   >
+346                     <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+347                     <div className="px-3 py-2">
+348                       <div
+349                         className="font-medium text-gray-900 cursor-pointer select-none"
+350                         onDoubleClick={() => onDblClickStudent(s)}
+351                         title="Duplo clique para editar"
+352                       >
+353                         {s.name}
+354                       </div>
+355                     </div>
+356                     <div className="px-1.5 py-2 text-center">
+357                       <label className="inline-flex items-center">
+358                         <span className="sr-only">Presença de {s.name}</span>
+359                         <input
+360                           type="checkbox"
+361                           className="h-4 w-4 accent-blue-600"
+362                           checked={!!presence[s.id]}
+363                           onChange={() => toggleStudent(s.id)}
+364                           aria-label={`Presença de ${s.name}`}
+365                         />
+366                       </label>
+367                     </div>
+368                   </div>
+369                 );
+370               })}
+371             </div>
+372           </div>
+373 
+374           {/* Barra de ações — abaixo da lista */}
+375           <div className="flex flex-wrap items-center gap-2">
+376             <button
+377               type="button"
+378               onClick={handleCreate}
+379               disabled={saving}
+380               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+381             >
+382               {saving ? "Salvando..." : "Criar chamada"}
+383             </button>
+384             <button
+385               type="button"
+386               onClick={() => setShowAdd((s) => !s)}
+387               className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+388             >
+389               Adicionar aluno
+390             </button>
+391           </div>
+392 
+393           {/* Importação (CSV/XLSX) */}
+394           <div className="rounded-2xl border">
+395             <div className="border-b px-4 py-3">
+396               <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+397               <p className="text-xs text-gray-600 mt-1">
+398                 <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+399               </p>
+400             </div>
+401 
+402             <div className="grid gap-3 px-4 py-4">
+403               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+404                 <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+405                 <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+406 
+407                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+408                   <input
+409                     type="file"
+410                     accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+411                     className="hidden"
+412                     id="students-file-input"
+413                     ref={fileRef}
+414                     onChange={(e) => {
+415                       const f = e.target.files?.[0] || null;
+416                       setUploadName(f ? f.name : null);
+417                       setUploadFile(f);
+418                     }}
+419                   />
+420                   <label
+421                     htmlFor="students-file-input"
+422                     className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+423                   >
+424                     Escolher arquivo
+425                   </label>
+426 
+427                   <button
+428                     type="button"
+429                     onClick={__handleImportSend}
+430                     disabled={!uploadFile || importing}
+431                     className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+432                   >
+433                     {importing ? "Enviando..." : "Enviar planilha"}
+434                   </button>
+435                 </div>
+436 
+437                 {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+438 
+439                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+440                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+441                     Baixar modelo CSV
+442                   </a>
+443                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+444                     Baixar modelo XLSX
+445                   </a>
+446                 </div>
+447               </div>
+448             </div>
+449           </div>
+450         </div>{/* /px-5 py-5 */}
+451       </section>
+452 
+453       {/* MODAL editar aluno */}
+454       {editId && (
+455         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+456           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+457             <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
+458             <div className="mt-3 grid gap-2">
+459               <label className="text-xs font-medium text-gray-700">Nome</label>
+460               <input
+461                 value={editName}
+462                 onChange={(e) => setEditName(e.target.value)}
+463                 className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+464                 placeholder="Nome do aluno"
+465               />
+466             </div>
+467             <div className="mt-4 flex items-center gap-2">
+468               <button
+469                 type="button"
+470                 onClick={handleEditSave}
+471                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+472               >
+473                 Salvar
+474               </button>
+475               <button
+476                 type="button"
+477                 onClick={() => { setEditId(null); setEditName(""); }}
+478                 className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+479               >
+480                 Cancelar
+481               </button>
+482               <button
+483                 type="button"
+484                 onClick={handleEditDelete}
+485                 className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+486               >
+487                 Excluir aluno
+488               </button>
+489             </div>
+490           </div>
+491         </div>
+492       )}
+493     </main>
+494   );
+495 }
+
+===== app/classes/[id]/chamadas/ui.tsx =====
+1 "use client";
+2 import { useEffect, useMemo, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 type Item = { id: string; seq: number; title: string; createdAt: string };
+5 type Order = "asc" | "desc";
+6 
+7 export default function ChamadasClient({ classId }: { classId: string }) {
+8   const router = useRouter();
+9   const [items, setItems] = useState<Item[]>([]);
+10   const [loading, setLoading] = useState(true);
+11   const [order, setOrder] = useState<Order>("desc");
+12   const [error, setError] = useState<string | null>(null);
+13 
+14   async function load() {
+15     setLoading(true);
+16     const res = await fetch(`/api/classes/${classId}/chamadas?order=${order}`, { cache: "no-store" });
+17     if (!res.ok) { setError("Falha ao carregar chamadas"); setLoading(false); return; }
+18     const data = await res.json();
+19     setItems(data?.attendances ?? []);
+20     setLoading(false);
+21   }
+22   useEffect(() => { load(); /* eslint-disable-next-line */ }, [order, classId]);
+23 
+24   const sorted = useMemo(() => [...items].sort((a,b)=> order==="asc"? a.seq-b.seq : b.seq-a.seq), [items, order]);
+25 
+26   return (
+27     <div className="mt-6">
+28       <div className="flex flex-wrap items-center gap-3">
+29         <button
+30           onClick={() => router.push(`/classes/${classId}/chamadas/new`)}
+31           className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow transition"
+32         >
+33           ➕ Nova chamada
+34         </button>
+35         <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur">
+36           <span className="opacity-90">Ordenar por ID:</span>
+37           <button onClick={()=>setOrder("asc")} className={`rounded-xl px-3 py-1 ${order==="asc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Crescente</button>
+38           <button onClick={()=>setOrder("desc")} className={`rounded-xl px-3 py-1 ${order==="desc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Decrescente</button>
+39         </div>
+40       </div>
+41 
+42       <div className="mt-5 bg-white/5 rounded-2xl p-1">
+43         {loading ? (
+44           <div className="p-6 text-white/90">Carregando chamadas...</div>
+45         ) : error ? (
+46           <div className="p-6 text-red-100">{error}</div>
+47         ) : sorted.length === 0 ? (
+48           <div className="p-6 text-white/90">Nenhuma chamada ainda. Crie a primeira.</div>
+49         ) : (
+50           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-2">
+51             {sorted.map((it) => (
+52               <li key={it.id}>
+53                 <button
+54                   className="w-full text-left rounded-xl bg-white px-4 py-3 shadow-sm hover:shadow transition border border-white/70"
+55                   onClick={() => router.push(`/classes/${classId}/chamadas/${it.seq}`)}
+56                 >
+57                   <div className="text-sm text-[var(--color-brand-blue)] font-semibold">ID #{it.seq}</div>
+58                   <div className="font-medium">{it.title}</div>
+59                 </button>
+60               </li>
+61             ))}
+62           </ul>
+63         )}
+64       </div>
+65     </div>
+66   );
+67 }
+
+===== app/classes/[id]/chamadas/[seq]/ui.tsx =====
+1 "use client";
+2 
+3 import Link from "next/link";
+4 import { useRouter } from "next/navigation";
+5 import { useEffect, useMemo, useRef, useState } from "react";
+6 
+7 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
+8 
+9 export default function EditChamadaClient({
+10   classId,
+11   className,
+12   seq,
+13   initialTitle,
+14   initialStudents,
+15   initialPresence,
+16   initialLessonDate,
+17   readOnly = false,
+18 } : {
+19   classId: string;
+20   className: string;
+21   seq: number;
+22   initialTitle: string;
+23   initialStudents: Student[];
+24   initialPresence?: Record<string, boolean>;
+25   initialLessonDate?: string; // YYYY-MM-DD
+26   readOnly?: boolean;
+27 }) {
+28   const router = useRouter();
+29 
+30   const [title, setTitle] = useState(initialTitle || "");
+31   const [students, setStudents] = useState<Student[]>(initialStudents || []);
+32   const [presence, setPresence] = useState<Record<string, boolean>>(initialPresence || {});
+33   const [lessonDate, setLessonDate] = useState<string>(initialLessonDate || "");
+34   const [saving, setSaving] = useState(false);
+35   const [deleting, setDeleting] = useState(false);
+36 
+37   // Adicionar aluno
+38   const [showAdd, setShowAdd] = useState(false);
+39   const [newName, setNewName] = useState("");
+40   const [newCpf, setNewCpf] = useState("");
+41   const [newContact, setNewContact] = useState("");
+42   const [adding, setAdding] = useState(false);
+43 
+44   // Import planilha
+45   const [uploadName, setUploadName] = useState<string | null>(null);
+46   const [uploadFile, setUploadFile] = useState<File | null>(null);
+47   const [importing, setImporting] = useState(false);
+48   const fileRef = useRef<HTMLInputElement | null>(null);
+49 
+50   // Editar aluno (modal)
+51   const [editId, setEditId] = useState<string | null>(null);
+52   const [editName, setEditName] = useState("");
+53 
+54   // Carrega presenças do servidor
+55   useEffect(() => {
+56     (async () => {
+57       try {
+58         const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
+59         if (!res.ok) throw new Error();
+60         const data = await res.json();
+61         const map: Record<string, boolean> = {};
+62         if (Array.isArray(data?.rows)) {
+63           for (const r of data.rows) map[r.studentId] = !!r.present;
+64         } else {
+65           for (const s of initialStudents) map[s.id] = true;
+66         }
+67         setPresence(map);
+68       } catch {
+69         const map: Record<string, boolean> = {};
+70         for (const s of initialStudents) map[s.id] = true;
+71         setPresence(map);
+72       }
+73     })();
+74   }, [classId, seq, initialStudents]);
+75 
+76   function toggleStudent(studentId: string) {
+77     if (readOnly) return;
+78     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+79   }
+80   function setAll(v: boolean) {
+81     if (readOnly) return;
+82     const all: Record<string, boolean> = {};
+83     for (const s of students) all[s.id] = v;
+84     setPresence(all);
+85   }
+86 
+87   // Atualiza somente o nome do aluno (modal) — bloqueado em readOnly
+88   async function handleEditSave() {
+89     if (readOnly) return;
+90     if (!editId) return;
+91     const name = editName.trim();
+92     if (name.length < 2) { alert("Informe o nome (mínimo 2 caracteres)."); return; }
+93     try {
+94       const res = await fetch(`/api/classes/${classId}/students/${editId}`, {
+95         method: "PATCH",
+96         headers: { "content-type": "application/json" },
+97         body: JSON.stringify({ name }),
+98       });
+99       const data = await res.json().catch(() => ({}));
+100       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+101       setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
+102       setEditId(null);
+103       setEditName("");
+104     } catch (e: any) {
+105       alert(e?.message || "Erro ao salvar");
+106       console.error(e);
+107     }
+108   }
+109   async function handleEditDelete() {
+110     if (readOnly) return;
+111     if (!editId) return;
+112     if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+113     try {
+114       const res = await fetch(`/api/classes/${classId}/students/${editId}`, { method: "DELETE" });
+115       const data = await res.json().catch(() => ({}));
+116       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+117       setStudents(prev => prev.filter(s => s.id !== editId));
+118       setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+119       setEditId(null);
+120       setEditName("");
+121     } catch (e: any) {
+122       alert("Erro ao excluir aluno");
+123       console.error(e);
+124     }
+125   }
+126 
+127   // ⬇️ FALTAVA ESTA FUNÇÃO
+128   async function handleAddStudent() {
+129     if (readOnly) return;
+130     const name = newName.trim();
+131     const cpf = newCpf.trim();
+132     const contact = newContact.trim();
+133     if (name.length < 2) {
+134       alert("Informe o nome (mínimo 2 caracteres).");
+135       return;
+136     }
+137     setAdding(true);
+138     try {
+139       const body: any = { name };
+140       if (cpf.length) body.cpf = cpf;
+141       if (contact.length) body.contact = contact;
+142 
+143       const res = await fetch(`/api/classes/${classId}/students`, {
+144         method: "POST",
+145         headers: { "content-type": "application/json" },
+146         body: JSON.stringify(body)
+147       });
+148       let payload: any = null;
+149       try { payload = await res.json(); } catch {}
+150       if (!res.ok || !payload?.ok) {
+151         let msg = "Erro ao adicionar aluno";
+152         const e = payload?.error;
+153         if (typeof e === "string") msg = e;
+154         else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+155         else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+156         throw new Error(msg);
+157       }
+158 
+159       const st: Student = payload.student;
+160       setStudents((prev) => [st, ...prev]);
+161       setPresence((p) => ({ ...p, [st.id]: true }));
+162       setNewName(""); setNewCpf(""); setNewContact("");
+163       setShowAdd(false);
+164     } catch (e: any) {
+165       alert(e?.message || "Erro ao adicionar aluno");
+166       console.error(e);
+167     } finally {
+168       setAdding(false);
+169     }
+170   }
+171 
+172   // PUT da data — bloqueado em readOnly
+173   async function onChangeDate(v: string) {
+174     setLessonDate(v);
+175     if (readOnly) return;
+176     try {
+177       const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
+178         method: "PUT",
+179         headers: { "content-type": "application/json" },
+180         body: JSON.stringify({ lessonDate: v || undefined })
+181       });
+182       const d = await res.json().catch(() => ({}));
+183       if (!res.ok || d?.ok === false) throw new Error(d?.error || "Falha ao atualizar data");
+184     } catch (e: any) {
+185       alert(e?.message || "Erro ao atualizar data");
+186       console.error(e);
+187     }
+188   }
+189 
+190   // Salvar presenças — bloqueado em readOnly
+191   async function handleSave() {
+192     if (readOnly) return;
+193     setSaving(true);
+194     try {
+195       const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+196       const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, {
+197         method: "POST",
+198         headers: { "content-type": "application/json" },
+199         body: JSON.stringify({ presences })
+200       });
+201       const d = await res.json();
+202       if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao salvar presenças");
+203       alert("Chamada atualizada com sucesso.");
+204     } catch (e: any) {
+205       alert(e?.message || "Erro ao salvar chamada");
+206       console.error(e);
+207     } finally {
+208       setSaving(false);
+209     }
+210   }
+211 
+212   // Excluir chamada — bloqueado em readOnly
+213   async function handleDelete() {
+214     if (readOnly) return;
+215     if (!confirm("Tem certeza que deseja excluir esta chamada? Esta ação não pode ser desfeita.")) return;
+216     setDeleting(true);
+217     try {
+218       const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, { method: "DELETE" });
+219       const d = await res.json().catch(() => ({}));
+220       if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao excluir chamada");
+221       router.push(`/classes/${classId}/chamadas`);
+222     } catch (e: any) {
+223       alert(e?.message || "Erro ao excluir chamada");
+224       console.error(e);
+225     } finally {
+226       setDeleting(false);
+227     }
+228   }
+229 
+230   // Importar CSV/XLSX — bloqueado em readOnly
+231   async function __handleImportSend() {
+232     if (readOnly) return;
+233     if (!classId || !uploadFile) { alert("Selecione um arquivo CSV/XLSX antes de enviar."); return; }
+234     setImporting(true);
+235     try {
+236       const fd = new FormData();
+237       fd.append("file", uploadFile);
+238       const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
+239       const data = await res.json().catch(() => ({}));
+240       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+241 
+242       const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+243       const data2 = await res2.json().catch(() => ({}));
+244       if (data2?.ok && Array.isArray(data2.students)) {
+245         setStudents(data2.students);
+246         setPresence((prev) => {
+247           const n: Record<string, boolean> = { ...(prev || {}) };
+248           for (const st of data2.students) {
+249             if (!(st.id in n)) n[st.id] = true;
+250           }
+251           return n;
+252         });
+253       }
+254       setUploadName(null);
+255       setUploadFile(null);
+256       if (fileRef.current) fileRef.current.value = "";
+257     } catch (e) {
+258       const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+259       console.error(e);
+260     } finally {
+261       setImporting(false);
+262     }
+263   }
+264 
+265   const totalPresentes = useMemo(
+266     () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+267     [students, presence]
+268   );
+269 
+270   return (
+271     <main className="mx-auto max-w-5xl px-4 py-6">
+272       <nav className="mb-4 text-sm">
+273         <Link href={`/classes/${classId}/chamadas`} className="text-blue-700 hover:underline">
+274           Voltar para Chamadas
+275         </Link>
+276       </nav>
+277 
+278       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+279         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+280           <div>
+281             <h1 className="text-xl font-semibold text-gray-900">
+282               {readOnly ? "Visualizar chamada" : "Editar chamada"} <span className="text-gray-500">#{seq}</span> — {className}
+283             </h1>
+284             <p className="text-sm text-gray-600">
+285               {readOnly ? "Somente visualização (gestor)." : "Atualize presenças, cadastre alunos e gerencie esta chamada."}
+286             </p>
+287           </div>
+288 
+289           {/* Título + Data */}
+290           <div className="flex flex-wrap items-end gap-4">
+291             <div className="text-right">
+292               <div className="text-xs text-gray-500">Nome da aula</div>
+293               <input
+294                 value={title}
+295                 onChange={(e) => setTitle(e.target.value)}
+296                 placeholder="Ex.: Aula 01 - Revisão"
+297                 className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+298                 disabled={readOnly}
+299               />
+300             </div>
+301             <div className="min-w-40">
+302               <div className="text-xs text-gray-500">Data</div>
+303               <input
+304                 type="date"
+305                 value={lessonDate}
+306                 onChange={(e) => onChangeDate(e.target.value)}
+307                 className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+308                 disabled={readOnly}
+309               />
+310             </div>
+311           </div>
+312         </div>
+313 
+314         <div className="space-y-5 px-5 py-5">
+315           {/* Adicionar aluno */}
+316           {!readOnly && (
+317             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+318               <div className="grid gap-3 md:grid-cols-3">
+319                 <div className="grid gap-1">
+320                   <label className="text-xs font-medium text-gray-700">Nome</label>
+321                   <input
+322                     value={newName}
+323                     onChange={(e) => setNewName(e.target.value)}
+324                     placeholder="Ex.: Maria Silva"
+325                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+326                   />
+327                 </div>
+328                 <div className="grid gap-1">
+329                   <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+330                   <input
+331                     value={newCpf}
+332                     onChange={(e) => setNewCpf(e.target.value)}
+333                     placeholder="Somente números"
+334                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+335                   />
+336                 </div>
+337                 <div className="grid gap-1">
+338                   <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+339                   <input
+340                     value={newContact}
+341                     onChange={(e) => setNewContact(e.target.value)}
+342                     placeholder="Ex.: (48) 99999-9999"
+343                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+344                   />
+345                 </div>
+346               </div>
+347               <div className="mt-3 flex items-center gap-2">
+348                 <button
+349                   type="button"
+350                   onClick={handleAddStudent}
+351                   disabled={adding || newName.trim().length < 2}
+352                   className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+353                 >
+354                   {adding ? "Adicionando..." : "Salvar aluno"}
+355                 </button>
+356                 <button
+357                   type="button"
+358                   onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+359                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+360                 >
+361                   Cancelar
+362                 </button>
+363               </div>
+364             </div>
+365           )}
+366 
+367           {/* Lista de presença */}
+368           <div className="rounded-2xl overflow-hidden border">
+369             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+370               <div className="font-semibold">Lista de presença</div>
+371               <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+372             </div>
+373 
+374             <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+375               {!readOnly && (
+376                 <>
+377                   <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+378                   <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+379                 </>
+380               )}
+381               {readOnly && <span className="text-blue-900/80">Modo visualização</span>}
+382             </div>
+383 
+384             <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+385               <div className="px-1.5 py-2 text-center">#</div>
+386               <div className="px-3 py-2">Aluno</div>
+387               <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+388             </div>
+389 
+390             <div className="max-h-[60vh] overflow-auto">
+391               {students.length === 0 ? (
+392                 <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+393               ) : students.map((s, idx) => {
+394                 const isEven = idx % 2 === 0;
+395                 return (
+396                   <div
+397                     key={s.id}
+398                     className={[
+399                       "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+400                       "border-b border-blue-100",
+401                       isEven ? "bg-blue-50/40" : "bg-white"
+402                     ].join(" ")}
+403                   >
+404                     <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+405                     <div className="px-3 py-2">
+406                       <div
+407                         className={`font-medium text-gray-900 ${readOnly ? "" : "cursor-pointer select-none"}`}
+408                         onDoubleClick={() => { if (!readOnly) { setEditId(s.id); setEditName(s.name); } }}
+409                         title={readOnly ? undefined : "Duplo clique para editar"}
+410                       >
+411                         {s.name}
+412                       </div>
+413                     </div>
+414                     <div className="px-1.5 py-2 text-center">
+415                       <label className="inline-flex items-center">
+416                         <span className="sr-only">Presença de {s.name}</span>
+417                         <input
+418                           type="checkbox"
+419                           className="h-4 w-4 accent-blue-600"
+420                           checked={!!presence[s.id]}
+421                           onChange={() => toggleStudent(s.id)}
+422                           aria-label={`Presença de ${s.name}`}
+423                           disabled={readOnly}
+424                         />
+425                       </label>
+426                     </div>
+427                   </div>
+428                 );
+429               })}
+430             </div>
+431           </div>
+432 
+433           {/* Barra de ações — abaixo da lista */}
+434           <div className="flex flex-wrap items-center gap-2">
+435             {!readOnly && (
+436               <>
+437                 <button
+438                   type="button"
+439                   onClick={handleSave}
+440                   disabled={saving}
+441                   className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+442                 >
+443                   {saving ? "Salvando..." : "Salvar alterações"}
+444                 </button>
+445 
+446                 <button
+447                   type="button"
+448                   onClick={() => setShowAdd((s) => !s)}
+449                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+450                 >
+451                   Adicionar aluno
+452                 </button>
+453 
+454                 <button
+455                   type="button"
+456                   onClick={handleDelete}
+457                   disabled={deleting}
+458                   className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+459                 >
+460                   {deleting ? "Excluindo..." : "Excluir chamada"}
+461                 </button>
+462               </>
+463             )}
+464             {readOnly && (
+465               <span className="text-sm text-gray-600">Somente visualização</span>
+466             )}
+467           </div>
+468 
+469           {/* Importação (CSV/XLSX) — apenas professor */}
+470           {!readOnly && (
+471             <div className="rounded-2xl border">
+472               <div className="border-b px-4 py-3">
+473                 <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+474                 <p className="text-xs text-gray-600 mt-1">
+475                   <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+476                 </p>
+477               </div>
+478 
+479               <div className="grid gap-3 px-4 py-4">
+480                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+481                   <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+482                   <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+483 
+484                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+485                     <input
+486                       type="file"
+487                       accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+488                       className="hidden"
+489                       id="students-file-input"
+490                       ref={fileRef}
+491                       onChange={(e) => {
+492                         const f = e.target.files?.[0] || null;
+493                         setUploadName(f ? f.name : null);
+494                         setUploadFile(f);
+495                       }}
+496                     />
+497                     <label
+498                       htmlFor="students-file-input"
+499                       className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+500                     >
+501                       Escolher arquivo
+502                     </label>
+503 
+504                     <button
+505                       type="button"
+506                       onClick={__handleImportSend}
+507                       disabled={!uploadFile || importing}
+508                       className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+509                     >
+510                       {importing ? "Enviando..." : "Enviar planilha"}
+511                     </button>
+512                   </div>
+513 
+514                   {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+515 
+516                   <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+517                     <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+518                       Baixar modelo CSV
+519                     </a>
+520                     <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+521                       Baixar modelo XLSX
+522                     </a>
+523                   </div>
+524                 </div>
+525               </div>
+526             </div>
+527           )}
+528         </div>{/* /px-5 py-5 */}
+529       </section>
+530 
+531       {/* MODAL editar aluno — só quando edição estiver habilitada */}
+532       {(!readOnly && editId) && (
+533         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+534           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+535             <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
+536             <div className="mt-3 grid gap-2">
+537               <label className="text-xs font-medium text-gray-700">Nome</label>
+538               <input
+539                 value={editName}
+540                 onChange={(e) => setEditName(e.target.value)}
+541                 className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+542                 placeholder="Nome do aluno"
+543               />
+544             </div>
+545             <div className="mt-4 flex items-center gap-2">
+546               <button
+547                 type="button"
+548                 onClick={handleEditSave}
+549                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+550               >
+551                 Salvar
+552               </button>
+553               <button
+554                 type="button"
+555                 onClick={() => { setEditId(null); setEditName(""); }}
+556                 className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+557               >
+558                 Cancelar
+559               </button>
+560               <button
+561                 type="button"
+562                 onClick={handleEditDelete}
+563                 className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+564               >
+565                 Excluir aluno
+566               </button>
+567             </div>
+568           </div>
+569         </div>
+570       )}
+571     </main>
+572   );
+573 }
+
+===== app/api/classes/[id]/chamadas/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 const createSchema = z.object({
+7   title: z.string().trim().min(1).max(100).optional().default("Chamada"),
+8   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() // YYYY-MM-DD
+9 });
+10 
+11 // GET: lista chamadas (order por seq)
+12 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+13   const { id } = await ctx.params;
+14   const user = await requireUser();
+15   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+16 
+17   const role = await getRole(user.id, id);
+18   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+19 
+20   const { searchParams } = new URL(req.url);
+21   const order = searchParams.get("order") === "asc" ? "asc" : "desc";
+22 
+23   const items = await prisma.attendance.findMany({
+24     where: { classId: id },
+25     orderBy: { seq: order },
+26     select: { id: true, seq: true, title: true, createdAt: true }
+27   });
+28 
+29   return NextResponse.json({ ok:true, attendances: items });
+30 }
+31 
+32 // POST: cria chamada e garante conteúdo com mesmo seq
+33 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+34   const { id } = await ctx.params;
+35   const user = await requireUser();
+36   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+37 
+38   const role = await getRole(user.id, id);
+39   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+40   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+41 
+42   const body = await req.json().catch(()=> ({}));
+43   const parsed = createSchema.safeParse(body);
+44   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+45 
+46   const result = await prisma.$transaction(async (tx) => {
+47     const last = await tx.attendance.findFirst({
+48       where: { classId: id },
+49       orderBy: { seq: "desc" },
+50       select: { seq: true }
+51     });
+52     const nextSeq = (last?.seq ?? 0) + 1;
+53 
+54     const __now = new Date();
+55     const __todayUTC = new Date(Date.UTC(__now.getUTCFullYear(), __now.getUTCMonth(), __now.getUTCDate()));
+56     const lessonDate = (parsed.data.lessonDate ? new Date(parsed.data.lessonDate + 'T00:00:00.000Z') : __todayUTC);
+57 
+58     const attendance = await tx.attendance.create({
+59       data: {
+60         classId: id,
+61         seq: nextSeq,
+62         title: parsed.data.title || `Chamada ${nextSeq}`,
+63         lessonDate
+64       },
+65       select: { id: true, seq: true, title: true, createdAt: true, lessonDate: true }
+66     });
+67 
+68     await tx.content.upsert({
+69       where: { classId_seq: { classId: id, seq: nextSeq } },
+70       update: {},
+71       create: {
+72         classId: id,
+73         seq: nextSeq,
+74         title: `Conteúdo ${nextSeq}`,
+75         bodyHtml: null
+76       }
+77     });
+78 
+79     return attendance;
+80   });
+81 
+82   return NextResponse.json({ ok:true, attendance: result }, { status: 201 });
+83 }
+
+===== app/api/classes/[id]/chamadas/[seq]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+7   const { id, seq } = await ctx.params;
+8   const user = await requireUser();
+9   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+10   const role = await getRole(user.id, id);
+11   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+12   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+13 
+14   const seqNum = Number(seq);
+15   if (!Number.isFinite(seqNum)) {
+16     return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+17   }
+18 
+19   try {
+20     await prisma.attendance.delete({
+21       where: { classId_seq: { classId: id, seq: seqNum } as any },
+22     });
+23     return NextResponse.json({ ok: true });
+24   } catch (e1) {
+25     try {
+26       await prisma.attendance.deleteMany({
+27         where: { classId: id, seq: seqNum },
+28       });
+29       return NextResponse.json({ ok: true });
+30     } catch (e2) {
+31       console.error("DELETE chamada erro:", e2);
+32       return NextResponse.json({ ok: false, error: "Erro ao excluir chamada" }, { status: 500 });
+33     }
+34   }
+35 }
+36 
+37 const updateSchema = z.object({
+38   lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+39 });
+40 
+41 export async function PUT(req: Request, ctx: { params: Promise<{ id: string; seq: string }> }) {
+42   const { id, seq } = await ctx.params;
+43   const user = await requireUser();
+44   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+45   const role = await getRole(user.id, id);
+46   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+47   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+48 
+49   const seqNum = Number(seq);
+50   if (!Number.isFinite(seqNum)) return NextResponse.json({ ok: false, error: "Seq inválida" }, { status: 400 });
+51 
+52   const body = await req.json().catch(() => ({}));
+53   const parsed = updateSchema.safeParse(body);
+54   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
+55 
+56   const updateData: any = {};
+57   if (parsed.data.lessonDate) {
+58     updateData.lessonDate = new Date(parsed.data.lessonDate + 'T00:00:00.000Z');
+59   }
+60 
+61   if (!Object.keys(updateData).length) return NextResponse.json({ ok: true, updated: 0 });
+62 
+63   await prisma.attendance.update({
+64     where: { classId_seq: { classId: id, seq: seqNum } as any },
+65     data: updateData
+66   });
+67 
+68   return NextResponse.json({ ok: true, updated: 1 });
+69 }
+
+===== app/api/classes/[id]/conteudos/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 // Monta um HTML simples com as seções opcionais
+7 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+8   const b = [];
+9   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+10   if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+11   if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+12   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+13   return b.join("\n");
+14 }
+15 
+16 const createSchema = z.object({
+17   title: z.string().trim().min(2, "Nome da aula é obrigatório"),
+18   objetivos: z.string().optional(),
+19   desenvolvimento: z.string().optional(),
+20   recursos: z.string().optional(),
+21   bncc: z.string().optional(),
+22 });
+23 
+24 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+25   const { id } = await params;
+26   const user = await requireUser();
+27   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+28 
+29   const list = await prisma.content.findMany({
+30     where: { classId: id },
+31     orderBy: { seq: "asc" },
+32     select: { id: true, seq: true, title: true }
+33   });
+34 
+35   return NextResponse.json({ ok:true, list });
+36 }
+37 
+38 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+39   const { id } = await params;
+40   const user = await requireUser();
+41   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+42 
+43   const role = await getRole(user.id, id);
+44   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+45   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+46 
+47   const body = await req.json().catch(()=> ({}));
+48   const parsed = createSchema.safeParse(body);
+49   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+50 
+51   const last = await prisma.content.findFirst({ where: { classId: id }, orderBy: { seq: "desc" }, select: { seq: true } });
+52   const nextSeq = (last?.seq ?? 0) + 1;
+53 
+54   const created = await prisma.content.create({
+55     data: {
+56       classId: id,
+57       seq: nextSeq,
+58       title: parsed.data.title,
+59       bodyHtml: toBodyHtml(parsed.data),
+60     },
+61     select: { id: true, seq: true, title: true }
+62   });
+63 
+64   return NextResponse.json({ ok:true, content: created }, { status: 201 });
+65 }
+
+===== app/api/classes/[id]/conteudos/full/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 
+5 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+6   const { id } = await params;
+7   const user = await requireUser();
+8   if (!user) return NextResponse.json({ ok:false }, { status:401 });
+9 
+10   const cls = await prisma.class.findFirst({ where: { id }, select: { id:true }});
+11   if (!cls) return NextResponse.json({ ok:false, error:"Turma não encontrada" }, { status:404 });
+12 
+13   const list = await prisma.content.findMany({
+14     where: { classId:id },
+15     orderBy: { seq:"asc" },
+16     select: { seq:true, title:true, bodyHtml:true }
+17   });
+18 
+19   return NextResponse.json({ ok:true, list });
+20 }
+
+===== app/api/classes/[id]/conteudos/[seq]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { z } from "zod";
+5 
+6 /** Serialização do bodyHtml em seções e vice-versa */
+7 function toBodyHtml(obj: {objetivos?: string; desenvolvimento?: string; recursos?: string; bncc?: string}) {
+8   const b = [];
+9   if (obj.objetivos) b.push(`<h3>Objetivos</h3><p>${obj.objetivos}</p>`);
+10   if (obj.desenvolvimento) b.push(`<h3>Desenvolvimento das Atividades</h3><p>${obj.desenvolvimento}</p>`);
+11   if (obj.recursos) b.push(`<h3>Recursos Pedagógicos</h3><p>${obj.recursos}</p>`);
+12   if (obj.bncc) b.push(`<h3>BNCC</h3><p>${obj.bncc}</p>`);
+13   return b.join("\n");
+14 }
+15 
+16 function fromBodyHtml(html?: string) {
+17   const out: Record<string,string> = {};
+18   if (!html) return out;
+19   const get = (title: string) => {
+20     const re = new RegExp(`<h3>\\s*${title}\\s*<\\/h3>\\s*<p>([\\s\\S]*?)<\\/p>`, "i");
+21     const m = html.match(re);
+22     return m ? m[1] : "";
+23   };
+24   out.objetivos = get("Objetivos");
+25   out.desenvolvimento = get("Desenvolvimento das Atividades");
+26   out.recursos = get("Recursos Pedagógicos");
+27   out.bncc = get("BNCC");
+28   return out;
+29 }
+30 
+31 const patchSchema = z.object({
+32   title: z.string().trim().min(1).optional(),
+33   objetivos: z.string().optional(),
+34   desenvolvimento: z.string().optional(),
+35   recursos: z.string().optional(),
+36   bncc: z.string().optional(),
+37 });
+38 
+39 export async function GET(_req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+40   const { id, seq } = await params;
+41   const user = await requireUser();
+42   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+43 
+44   const role = await getRole(user.id, id);
+45   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+46 
+47   const content = await prisma.content.findFirst({
+48     where: { classId: id, seq: Number(seq) },
+49     select: { id:true, seq:true, title:true, bodyHtml:true }
+50   });
+51   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+52 
+53   const sections = fromBodyHtml(content.bodyHtml || "");
+54   return NextResponse.json({ ok:true, content: { ...content, ...sections } });
+55 }
+56 
+57 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+58   const { id, seq } = await params;
+59   const user = await requireUser();
+60   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+61 
+62   const role = await getRole(user.id, id);
+63   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+64   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+65 
+66   const body = await req.json().catch(()=> ({}));
+67   const parsed = patchSchema.safeParse(body);
+68   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status:400 });
+69 
+70   const current = await prisma.content.findFirst({
+71     where: { classId: id, seq: Number(seq) },
+72     select: { id:true, title:true, bodyHtml:true, seq:true }
+73   });
+74   if (!current) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+75 
+76   const existing = fromBodyHtml(current.bodyHtml || "");
+77   const merged = {
+78     objetivos: parsed.data.objetivos ?? existing.objetivos ?? "",
+79     desenvolvimento: parsed.data.desenvolvimento ?? existing.desenvolvimento ?? "",
+80     recursos: parsed.data.recursos ?? existing.recursos ?? "",
+81     bncc: parsed.data.bncc ?? existing.bncc ?? "",
+82   };
+83 
+84   const updated = await prisma.content.update({
+85     where: { id: current.id },
+86     data: {
+87       title: parsed.data.title ?? current.title,
+88       bodyHtml: toBodyHtml(merged),
+89     },
+90     select: { id:true, seq:true, title:true, bodyHtml:true }
+91   });
+92 
+93   return NextResponse.json({ ok:true, content: updated });
+94 }
+95 
+96 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; seq: string }> }) {
+97   const { id, seq } = await params;
+98   const user = await requireUser();
+99   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+100 
+101   const role = await getRole(user.id, id);
+102   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+103   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+104 
+105   const content = await prisma.content.findFirst({ where: { classId: id, seq: Number(seq) }, select: { id:true } });
+106   if (!content) return NextResponse.json({ ok:false, error:"Conteúdo não encontrado" }, { status:404 });
+107 
+108   await prisma.content.delete({ where: { id: content.id } });
+109   return NextResponse.json({ ok:true });
+110 }
+
+===== prisma/schema.prisma =====
+1 generator client {
+2   provider = "prisma-client-js"
+3 }
+4 
+5 datasource db {
+6   provider  = "postgresql"
+7   url       = env("DATABASE_URL")
+8   directUrl = env("DIRECT_URL")
+9 }
+10 
+11 model User {
+12   id           String   @id @default(cuid())
+13   name         String
+14   cpf          String   @unique
+15   birthDate    DateTime
+16   email        String   @unique
+17   phone        String
+18   createdAt    DateTime @default(now())
+19   passwordHash String?
+20 
+21   resetTokens   PasswordResetToken[]
+22   classes       Class[]              @relation("UserClasses")
+23   // Back-relations adicionados automaticamente
+24   classAccesses ClassAccess[]
+25   shareLinks    ShareLink[]
+26   auditLogs     AuditLog[]
+27 }
+28 
+29 model PasswordResetToken {
+30   id        String    @id @default(cuid())
+31   token     String    @unique
+32   userId    String
+33   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+34   expiresAt DateTime
+35   usedAt    DateTime?
+36   createdAt DateTime  @default(now())
+37 }
+38 
+39 model Class {
+40   id        String   @id @default(cuid())
+41   name      String
+42   ownerId   String
+43   owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+44   createdAt DateTime @default(now())
+45 
+46   attendances Attendance[]
+47   contents    Content[]
+48   students    Student[]
+49   // Back-relations adicionados automaticamente
+50   accesses    ClassAccess[]
+51   shareLinks  ShareLink[]
+52   auditLogs   AuditLog[]
+53 }
+54 
+55 model Attendance {
+56   id         String    @id @default(cuid())
+57   classId    String
+58   cls        Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+59   seq        Int
+60   title      String    @default("Chamada")
+61   createdAt  DateTime  @default(now())
+62   lessonDate DateTime? // data editável da aula (UTC, opcional)
+63 
+64   @@unique([classId, seq])
+65 }
+66 
+67 model Content {
+68   id        String   @id @default(cuid())
+69   classId   String
+70   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+71   seq       Int
+72   title     String   @default("Conteúdo")
+73   bodyHtml  String? // futuro: editor; por enquanto pode ficar vazio
+74   createdAt DateTime @default(now())
+75 
+76   @@unique([classId, seq])
+77 }
+78 
+79 model Student {
+80   id        String   @id @default(cuid())
+81   classId   String
+82   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+83   name      String
+84   cpf       String?
+85   contact   String? // whatsapp/email/telefone
+86   createdAt DateTime @default(now())
+87 }
+88 
+89 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+90 
+91 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+92 model AttendancePresence {
+93   id        String   @id @default(cuid())
+94   classId   String
+95   seq       Int
+96   studentId String
+97   present   Boolean  @default(false)
+98   createdAt DateTime @default(now())
+99   updatedAt DateTime @updatedAt
+100 
+101   // Sem relações Prisma para não exigir back-relations agora.
+102   @@unique([classId, seq, studentId], name: "class_seq_student_unique")
+103   @@index([classId, seq], name: "class_seq_idx")
+104 }
+105 
+106 // ====== CONTROLE DE ACESSO / LINKS / AUDITORIA ======
+107 
+108 /// Papéis por turma:
+109 /// - PROFESSOR: único por turma (garantido por índice único parcial na migração)
+110 /// - GESTOR: ilimitado
+111 enum ClassRole {
+112   PROFESSOR
+113   GESTOR
+114 }
+115 
+116 /// Relação usuário ↔ turma com papel
+117 model ClassAccess {
+118   id        String    @id @default(cuid())
+119   classId   String
+120   userId    String
+121   role      ClassRole
+122   createdAt DateTime  @default(now())
+123 
+124   // Relations
+125   cls  Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+126   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+127 
+128   // Um usuário não pode ter dois papéis simultâneos na mesma turma
+129   @@unique([classId, userId], name: "class_user_unique")
+130   @@index([classId])
+131   @@index([userId])
+132 }
+133 
+134 /// Link compartilhável para entrar na turma com um papel
+135 model ShareLink {
+136   id            String    @id @default(cuid())
+137   classId       String
+138   token         String    @unique
+139   role          ClassRole
+140   createdBy     String
+141   isRevoked     Boolean   @default(false)
+142   isPromotional Boolean   @default(false) // criador ainda professor -> 1º claim promove criador a GESTOR e dá PROF. ao convidado
+143   usedAt        DateTime?
+144   createdAt     DateTime  @default(now())
+145 
+146   // Relations
+147   cls    Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+148   author User  @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+149 
+150   @@index([classId])
+151   @@index([createdBy])
+152 }
+153 
+154 /// Auditoria de ações sensíveis
+155 model AuditLog {
+156   id        String   @id @default(cuid())
+157   classId   String
+158   actorId   String?
+159   type      String // ex.: LINK_CREATED, LINK_CLAIMED, CLAIM_BLOCKED_PROFESSOR_EXISTS, ACCESS_REVOKED, CREATOR_PROMOTED
+160   metadata  Json?
+161   createdAt DateTime @default(now())
+162 
+163   cls   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+164   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+165 
+166   @@index([classId, createdAt])
+167   @@index([actorId])
+168 }
+
+===== lib/prisma.ts =====
+1 import { PrismaClient } from "@prisma/client";
+2 
+3 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+4 
+5 export const prisma =
+6   globalForPrisma.prisma ??
+7   new PrismaClient({
+8     log: ["error", "warn"],
+9   });
+10 
+11 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+===== lib/session.ts =====
+1 import { cookies, headers } from "next/headers";
+2 import { prisma } from "@/lib/prisma";
+3 import { ClassRole } from "@prisma/client";
+4 
+5 const COOKIE_NAME = "session_user_id";
+6 
+7 /** Lê o userId do cookie (async em Next 15) */
+8 export async function getSessionUserId(): Promise<string | null> {
+9   try {
+10     const c = await cookies();
+11     const id = c.get(COOKIE_NAME)?.value || null;
+12     return id;
+13   } catch {
+14     // Fallback para contexts onde cookies() não está disponível
+15     const h = await headers();
+16     const cookieHeader = h.get("cookie") || "";
+17     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+18     return m ? m[1] : null;
+19   }
+20 }
+21 
+22 /** Busca o usuário logado; retorna null se não houver */
+23 export async function requireUser() {
+24   const id = await getSessionUserId();
+25   if (!id) return null;
+26   const user = await prisma.user.findUnique({
+27     where: { id },
+28     select: { id: true, name: true, email: true }
+29   });
+30   return user;
+31 }
+32 
+33 /** Apaga o cookie de sessão (async em Next 15) */
+34 export async function clearSessionCookie() {
+35   const c = await cookies();
+36   c.set({
+37     name: COOKIE_NAME,
+38     value: "",
+39     httpOnly: true,
+40     path: "/",
+41     maxAge: 0
+42   });
+43 }
+44 
+45 // === Access helpers (ClassAccess) ============================================
+46 
+47 /**
+48  * Retorna o papel do usuário na turma (PROFESSOR | GESTOR) ou null se não tem acesso.
+49  */
+50 export async function getRole(userId: string, classId: string): Promise<ClassRole | null> {
+51   try {
+52     const row = await prisma.classAccess.findFirst({
+53       where: { classId, userId },
+54       select: { role: true },
+55     });
+56     return row?.role ?? null;
+57   } catch (_e) {
+58     return null;
+59   }
+60 }
+61 
+62 /** Versão que usa o usuário logado da sessão atual. */
+63 export async function getMyRole(classId: string): Promise<ClassRole | null> {
+64   const me = await requireUser();
+65   if (!me) return null;
+66   return getRole(me.id, classId);
+67 }
+68 
+69 /** Açúcares para checagens rápidas na UI/rota. */
+70 export function roleFlags(role: ClassRole | null) {
+71   return {
+72     isProfessor: role === "PROFESSOR",
+73     isGestor: role === "GESTOR",
+74     hasAccess: role === "PROFESSOR" || role === "GESTOR",
+75   };
+76 }
+
+===== app/api/classes/[id]/next-number/route.ts =====
+[MISSING] app/api/classes/[id]/next-number/route.ts
+
+===== app/classes/[id]/chamadas/NameInput.tsx =====
+[MISSING] app/classes/[id]/chamadas/NameInput.tsx

@@ -1,0 +1,397 @@
+
+===== app/dashboard/page.tsx =====
+1 "use client";
+2 import { useEffect, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 import ClassCard from "./ClassCard";
+5 
+6 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
+7 type ClassItem = { id: string; name: string; createdAt: string };
+8 
+9 export default function DashboardPage() {
+10   const router = useRouter();
+11   const [me, setMe] = useState<Me | null>(null);
+12   const [loading, setLoading] = useState(true);
+13   const [classes, setClasses] = useState<ClassItem[]>([]);
+14   const [name, setName] = useState("");
+15   const [err, setErr] = useState<string | null>(null);
+16 
+17   async function fetchMe() {
+18     const res = await fetch("/api/auth/me", { cache: "no-store" });
+19     if (res.status === 401) {
+20       router.push("/login");
+21       return;
+22     }
+23     const data: Me = await res.json();
+24     setMe(data);
+25   }
+26 
+27   async function fetchClasses() {
+28     const res = await fetch("/api/classes", { cache: "no-store" });
+29     if (res.status === 401) {
+30       router.push("/login");
+31       return;
+32     }
+33     const data = await res.json();
+34     if (data?.ok) setClasses(data.classes || []);
+35   }
+36 
+37   useEffect(() => {
+38     (async () => {
+39       await fetchMe();
+40       await fetchClasses();
+41       setLoading(false);
+42     })();
+43     // eslint-disable-next-line react-hooks/exhaustive-deps
+44   }, []);
+45 
+46   async function onLogout() {
+47     await fetch("/api/auth/logout", { method: "POST" });
+48     router.push("/login");
+49   }
+50 
+51   async function onCreateClass(e: React.FormEvent) {
+52     e.preventDefault();
+53     setErr(null);
+54     const n = name.trim();
+55     if (n.length < 2) {
+56       setErr("Nome da turma muito curto.");
+57       return;
+58     }
+59     const res = await fetch("/api/classes", {
+60       method: "POST",
+61       headers: { "content-type": "application/json" },
+62       body: JSON.stringify({ name: n })
+63     });
+64     const data = await res.json();
+65     if (!res.ok || !data?.ok) {
+66       setErr(data?.error ?? "Erro ao criar turma");
+67       return;
+68     }
+69     setName("");
+70     await fetchClasses();
+71   }
+72 
+73   if (loading) {
+74     return <main className="min-h-screen flex items-center justify-center">Carregando...</main>;
+75   }
+76 
+77   const firstName = me?.user?.name?.split(" ")[0] || "Olá";
+78 
+79   return (
+80     <main className="min-h-screen p-6 lg:p-10">
+81       <header className="flex items-center justify-between max-w-5xl mx-auto mb-8">
+82         <div className="flex items-center gap-3">
+83           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+84           <h1 className="text-2xl font-semibold">EDUCC • Dashboard</h1>
+85         </div>
+86         <button onClick={onLogout} className="btn-primary">Sair</button>
+87       </header>
+88 
+89       <section className="max-w-5xl mx-auto">
+90         <div className="card p-6 mb-8">
+91           <h2 className="text-xl font-semibold">{firstName}, bem-vindo(a)!</h2>
+92           <p className="text-gray-600">Gerencie suas turmas abaixo.</p>
+93         </div>
+94 
+95         <div className="card p-6 mb-6">
+96           <h3 className="font-semibold mb-3">Criar nova turma</h3>
+97           <form onSubmit={onCreateClass} className="flex flex-col sm:flex-row gap-3">
+98             <input
+99               className="input flex-1"
+100               type="text"
+101               placeholder="Nome da turma"
+102               value={name}
+103               onChange={(e) => setName(e.target.value)}
+104               required
+105               minLength={2}
+106             />
+107             <button type="submit" className="btn-primary">Criar turma</button>
+108           </form>
+109           {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
+110         </div>
+111 
+112         <div className="card p-6">
+113           <h3 className="font-semibold mb-4">Minhas turmas</h3>
+114           {classes.length === 0 ? (
+115             <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
+116           ) : (
+117             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+118               {classes.map((c) => (
+119                 <ClassCard key={c.id} cls={c} />
+120               ))}
+121             </div>
+122           )}
+123         </div>
+124       </section>
+125     </main>
+126   );
+127 }
+
+===== app/(app)/dashboard/page.tsx =====
+[MISSING] app/(app)/dashboard/page.tsx
+
+===== app/dashboard/ClassCard.tsx =====
+1 "use client";
+2 import Link from "next/link";
+3 import { useEffect, useRef, useState } from "react";
+4 import ShareClassModal from "@/components/ShareClassModal";
+5 
+6 export default function ClassCard({ cls }: { id?: string; name?: string } & { cls?: { id: string; name: string } }) {
+7   const item = cls ?? ({ id: (arguments as any)[0].id, name: (arguments as any)[0].name }); // compat com props antigas
+8   const [menuOpen, setMenuOpen] = useState(false);
+9   const [shareOpen, setShareOpen] = useState(false);
+10   const menuRef = useRef<HTMLDivElement | null>(null);
+11 
+12   useEffect(() => {
+13     function onDocClick(e: MouseEvent) {
+14       if (!menuRef.current) return;
+15       if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+16     }
+17     if (menuOpen) document.addEventListener("mousedown", onDocClick);
+18     return () => document.removeEventListener("mousedown", onDocClick);
+19   }, [menuOpen]);
+20 
+21   return (
+22     <div className="relative">
+23       <Link href={`/classes/${item.id}`} className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition">
+24         <h3 className="font-semibold truncate">{item.name}</h3>
+25         <p className="text-sm text-gray-500">Clique para abrir</p>
+26       </Link>
+27 
+28       <div className="absolute top-2 right-2" ref={menuRef}>
+29         <button
+30           type="button"
+31           className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
+32           aria-label="Mais ações"
+33           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen((v) => !v); }}
+34         >
+35           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+36             <circle cx="12" cy="5" r="1.8" />
+37             <circle cx="12" cy="12" r="1.8" />
+38             <circle cx="12" cy="19" r="1.8" />
+39           </svg>
+40         </button>
+41 
+42         {menuOpen && (
+43           <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
+44             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
+45               Compartilhar
+46             </button>
+47           </div>
+48         )}
+49       </div>
+50 
+51       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
+52     </div>
+53   );
+54 }
+
+===== app/(app)/dashboard/ClassCard.tsx =====
+1 "use client";
+2 import Link from "next/link";
+3 import { useEffect, useRef, useState } from "react";
+4 import ShareClassModal from "@/components/ShareClassModal";
+5 
+6 export default function ClassCard({ cls }: { id?: string; name?: string } & { cls?: { id: string; name: string } }) {
+7   const item = cls ?? ({ id: (arguments as any)[0].id, name: (arguments as any)[0].name }); // compat com props antigas
+8   const [menuOpen, setMenuOpen] = useState(false);
+9   const [shareOpen, setShareOpen] = useState(false);
+10   const menuRef = useRef<HTMLDivElement | null>(null);
+11 
+12   useEffect(() => {
+13     function onDocClick(e: MouseEvent) {
+14       if (!menuRef.current) return;
+15       if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+16     }
+17     if (menuOpen) document.addEventListener("mousedown", onDocClick);
+18     return () => document.removeEventListener("mousedown", onDocClick);
+19   }, [menuOpen]);
+20 
+21   return (
+22     <div className="relative">
+23       <Link href={`/classes/${item.id}`} className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition">
+24         <h3 className="font-semibold truncate">{item.name}</h3>
+25         <p className="text-sm text-gray-500">Clique para abrir</p>
+26       </Link>
+27 
+28       <div className="absolute top-2 right-2" ref={menuRef}>
+29         <button
+30           type="button"
+31           className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
+32           aria-label="Mais ações"
+33           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen((v) => !v); }}
+34         >
+35           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+36             <circle cx="12" cy="5" r="1.8" />
+37             <circle cx="12" cy="12" r="1.8" />
+38             <circle cx="12" cy="19" r="1.8" />
+39           </svg>
+40         </button>
+41 
+42         {menuOpen && (
+43           <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
+44             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
+45               Compartilhar
+46             </button>
+47           </div>
+48         )}
+49       </div>
+50 
+51       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
+52     </div>
+53   );
+54 }
+
+===== lib/session.ts =====
+1 import { cookies, headers } from "next/headers";
+2 import { prisma } from "@/lib/prisma";
+3 import { ClassRole } from "@prisma/client";
+4 
+5 const COOKIE_NAME = "session_user_id";
+6 
+7 /** Lê o userId do cookie (async em Next 15) */
+8 export async function getSessionUserId(): Promise<string | null> {
+9   try {
+10     const c = await cookies();
+11     const id = c.get(COOKIE_NAME)?.value || null;
+12     return id;
+13   } catch {
+14     // Fallback para contexts onde cookies() não está disponível
+15     const h = await headers();
+16     const cookieHeader = h.get("cookie") || "";
+17     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+18     return m ? m[1] : null;
+19   }
+20 }
+21 
+22 /** Busca o usuário logado; retorna null se não houver */
+23 export async function requireUser() {
+24   const id = await getSessionUserId();
+25   if (!id) return null;
+26   const user = await prisma.user.findUnique({
+27     where: { id },
+28     select: { id: true, name: true, email: true }
+29   });
+30   return user;
+31 }
+32 
+33 /** Apaga o cookie de sessão (async em Next 15) */
+34 export async function clearSessionCookie() {
+35   const c = await cookies();
+36   c.set({
+37     name: COOKIE_NAME,
+38     value: "",
+39     httpOnly: true,
+40     path: "/",
+41     maxAge: 0
+42   });
+43 }
+44 
+45 // === Access helpers (ClassAccess) ============================================
+46 
+47 /**
+48  * Retorna o papel do usuário na turma (PROFESSOR | GESTOR) ou null se não tem acesso.
+49  */
+50 export async function getRole(userId: string, classId: string): Promise<ClassRole | null> {
+51   try {
+52     const row = await prisma.classAccess.findFirst({
+53       where: { classId, userId },
+54       select: { role: true },
+55     });
+56     return row?.role ?? null;
+57   } catch (_e) {
+58     return null;
+59   }
+60 }
+61 
+62 /** Versão que usa o usuário logado da sessão atual. */
+63 export async function getMyRole(classId: string): Promise<ClassRole | null> {
+64   const me = await requireUser();
+65   if (!me) return null;
+66   return getRole(me.id, classId);
+67 }
+68 
+69 /** Açúcares para checagens rápidas na UI/rota. */
+70 export function roleFlags(role: ClassRole | null) {
+71   return {
+72     isProfessor: role === "PROFESSOR",
+73     isGestor: role === "GESTOR",
+74     hasAccess: role === "PROFESSOR" || role === "GESTOR",
+75   };
+76 }
+
+===== middleware.ts =====
+1 import { NextResponse } from "next/server";
+2 import type { NextRequest } from "next/server";
+3 
+4 export function middleware(req: NextRequest) {
+5   const path = req.nextUrl.pathname;
+6 
+7   // Corrige / (auth) /register e / (auth) /recover
+8   if (path === "/(auth)/register") {
+9     const url = req.nextUrl.clone();
+10     url.pathname = "/register";
+11     return NextResponse.redirect(url);
+12   }
+13   if (path === "/(auth)/recover") {
+14     const url = req.nextUrl.clone();
+15     url.pathname = "/recover-email";
+16     return NextResponse.redirect(url);
+17   }
+18 
+19   return NextResponse.next();
+20 }
+21 
+22 export const config = {
+23   matcher: ["/(auth)/register", "/(auth)/recover"]
+24 };
+
+===== app/api/classes/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 
+5 export async function GET() {
+6   const user = await requireUser();
+7   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+8 
+9   const classes = await prisma.class.findMany({
+10     where: {
+11       accesses: {
+12         some: { userId: user.id }
+13       }
+14     },
+15     orderBy: { createdAt: "desc" },
+16     select: { id: true, name: true, createdAt: true }
+17   });
+18 
+19   return NextResponse.json({ ok:true, classes });
+20 }
+21 
+22 export async function POST(req: Request) {
+23   const user = await requireUser();
+24   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+25 
+26   const body = await req.json().catch(()=> ({}));
+27   const name = (body?.name ?? "").toString().trim();
+28   if (!name || name.length < 2) {
+29     return NextResponse.json({ ok:false, error: "Nome da turma inválido" }, { status: 400 });
+30   }
+31 
+32   const cls = await prisma.class.create({
+33     data: { 
+34       name,
+35       ownerId: user.id,
+36       accesses: {
+37         create: {
+38           userId: user.id,
+39           role: "PROFESSOR"
+40         }
+41       }
+42     },
+43     select: { id: true, name: true, createdAt: true }
+44   });
+45 
+46   return NextResponse.json({ ok:true, class: cls }, { status: 201 });
+47 }

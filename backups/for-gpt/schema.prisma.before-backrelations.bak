@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  cpf          String   @unique
+  birthDate    DateTime
+  email        String   @unique
+  phone        String
+  createdAt    DateTime @default(now())
+  passwordHash String?
+
+  resetTokens   PasswordResetToken[]
+  classes       Class[]              @relation("UserClasses")
+  // Back-relations adicionados automaticamente
+  classAccesses ClassAccess[]
+  shareLinks    ShareLink[]
+  auditLogs     AuditLog[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  attendances Attendance[]
+  contents    Content[]
+  students    Student[]
+  // Back-relations adicionados automaticamente
+  accesses    ClassAccess[]
+  shareLinks  ShareLink[]
+  auditLogs   AuditLog[]
+}
+
+model Attendance {
+  id         String    @id @default(cuid())
+  classId    String
+  cls        Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  seq        Int
+  title      String    @default("Chamada")
+  createdAt  DateTime  @default(now())
+  lessonDate DateTime? // data editável da aula (UTC, opcional)
+
+  @@unique([classId, seq])
+}
+
+model Content {
+  id        String   @id @default(cuid())
+  classId   String
+  cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  seq       Int
+  title     String   @default("Conteúdo")
+  bodyHtml  String? // futuro: editor; por enquanto pode ficar vazio
+  createdAt DateTime @default(now())
+
+  @@unique([classId, seq])
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  classId   String
+  cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  name      String
+  cpf       String?
+  contact   String? // whatsapp/email/telefone
+  createdAt DateTime @default(now())
+}
+
+/// Marcações de presença por aluno em uma chamada específica (classId+seq).
+
+/// Marcações de presença por aluno em uma chamada específica (classId+seq).
+model AttendancePresence {
+  id        String   @id @default(cuid())
+  classId   String
+  seq       Int
+  studentId String
+  present   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Sem relações Prisma para não exigir back-relations agora.
+  @@unique([classId, seq, studentId], name: "class_seq_student_unique")
+  @@index([classId, seq], name: "class_seq_idx")
+}
+
+// ====== CONTROLE DE ACESSO / LINKS / AUDITORIA ======
+
+/// Papéis por turma:
+/// - PROFESSOR: único por turma (garantido por índice único parcial na migração)
+/// - GESTOR: ilimitado
+enum ClassRole {
+  PROFESSOR
+  GESTOR
+}
+
+/// Relação usuário ↔ turma com papel
+model ClassAccess {
+  id        String    @id @default(cuid())
+  classId   String
+  userId    String
+  role      ClassRole
+  createdAt DateTime  @default(now())
+
+  // Relations
+  cls  Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Um usuário não pode ter dois papéis simultâneos na mesma turma
+  @@unique([classId, userId], name: "class_user_unique")
+  @@index([classId])
+  @@index([userId])
+}
+
+/// Link compartilhável para entrar na turma com um papel
+model ShareLink {
+  id            String    @id @default(cuid())
+  classId       String
+  token         String    @unique
+  role          ClassRole
+  createdBy     String
+  isRevoked     Boolean   @default(false)
+  isPromotional Boolean   @default(false) // criador ainda professor -> 1º claim promove criador a GESTOR e dá PROF. ao convidado
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  cls    Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+  @@index([createdBy])
+}
+
+/// Auditoria de ações sensíveis
+model AuditLog {
+  id        String   @id @default(cuid())
+  classId   String
+  actorId   String?
+  type      String // ex.: LINK_CREATED, LINK_CLAIMED, CLAIM_BLOCKED_PROFESSOR_EXISTS, ACCESS_REVOKED, CREATOR_PROMOTED
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  cls   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([classId, createdAt])
+  @@index([actorId])
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  memberships ClassGroupMembership[]
+
+  @@index([userId, createdAt])
+}
+
+model ClassGroupMembership {
+  id        String   @id @default(cuid())
+  classId   String
+  groupId   String
+  createdAt DateTime @default(now())
+
+  cls   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  grp   Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, groupId], name: "class_group_unique")
+  @@index([groupId])
+  @@index([classId])
+}

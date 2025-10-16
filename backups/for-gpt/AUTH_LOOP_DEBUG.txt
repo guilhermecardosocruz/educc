@@ -1,0 +1,580 @@
+
+===== app/api/auth/login/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { z } from "zod";
+4 import bcrypt from "bcryptjs";
+5 import { cookies } from "next/headers";
+6 
+7 const schema = z.object({
+8   email: z.string().email(),
+9   password: z.string().min(8)
+10 });
+11 
+12 const COOKIE_NAME = "session_user_id";
+13 
+14 export async function POST(req: Request) {
+15   try {
+16     const body = await req.json().catch(() => ({}));
+17     const parsed = schema.safeParse(body);
+18     if (!parsed.success) {
+19       return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+20     }
+21     const { email, password } = parsed.data;
+22 
+23     const where = { email: email.toLowerCase() };
+24 
+25     const user = await prisma.user.findUnique({
+26       where,
+27       select: { id: true, name: true, email: true, passwordHash: true }
+28     });
+29 
+30     // resposta genérica para não dar dica
+31     const invalid = NextResponse.json({ ok:false, error: "Credenciais inválidas" }, { status: 401 });
+32 
+33     if (!user || !user.passwordHash) return invalid;
+34 
+35     const ok = await bcrypt.compare(password, user.passwordHash);
+36     if (!ok) return invalid;
+37 
+38     const c = await cookies();
+39     // cookie simples; se quiser, migramos para JWT com expiração/refresh
+40     c.set({
+41       name: COOKIE_NAME,
+42       value: user.id,
+43       httpOnly: true,
+44       path: "/",
+45       sameSite: "lax",
+46       // sem maxAge => cookie de sessão; podemos colocar expiração se preferir
+47     });
+48 
+49     return NextResponse.json({ ok:true, user: { id: user.id, name: user.name, email: user.email } });
+50   } catch (err:any) {
+51     return NextResponse.json({ ok:false, error: err?.message ?? "Erro" }, { status: 500 });
+52   }
+53 }
+
+===== app/api/auth/me/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { requireUser } from "@/lib/session";
+3 
+4 export async function GET() {
+5   const user = await requireUser();
+6   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+7   return NextResponse.json({ ok:true, user });
+8 }
+
+===== app/api/auth/logout/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { clearSessionCookie } from "@/lib/session";
+3 
+4 export async function POST() {
+5   try {
+6     await clearSessionCookie();
+7     return NextResponse.json({ ok:true });
+8   } catch {
+9     return NextResponse.json({ ok:false }, { status: 500 });
+10   }
+11 }
+
+===== app/(auth)/login/page.tsx =====
+1 import { Suspense } from "react";
+2 import LoginCard from "@/components/LoginCard";
+3 
+4 export const dynamic = "force-dynamic";
+5 
+6 export default function LoginPage() {
+7   return (
+8     <main className="min-h-screen flex items-center justify-center p-6 bg-white">
+9       <Suspense fallback={<div className="text-sm text-gray-600">Carregando…</div>}>
+10         <LoginCard />
+11       </Suspense>
+12     </main>
+13   );
+14 }
+
+===== app/(auth)/register/page.tsx =====
+1 "use client";
+2 import { useState } from "react";
+3 import Link from "next/link";
+4 import { useRouter } from "next/navigation";
+5 
+6 // Helpers de máscara
+7 function onlyDigits(s: string) { return s.replace(/\D+/g, ""); }
+8 
+9 function maskCPF(v: string) {
+10   const d = onlyDigits(v).slice(0, 11);
+11   const p1 = d.slice(0,3);
+12   const p2 = d.slice(3,6);
+13   const p3 = d.slice(6,9);
+14   const p4 = d.slice(9,11);
+15   let out = p1;
+16   if (p2) out += "." + p2;
+17   if (p3) out += "." + p3;
+18   if (p4) out += "-" + p4;
+19   return out;
+20 }
+21 
+22 function maskPhoneBR(v: string) {
+23   const d = onlyDigits(v).slice(0, 11);
+24   const ddd = d.slice(0,2);
+25   const a = d.length > 10 ? d.slice(2,7) : d.slice(2,6);
+26   const b = d.length > 10 ? d.slice(7,11) : d.slice(6,10);
+27   let out = ddd ? `(${ddd}` : "";
+28   if (ddd && d.length >= 2) out += ") ";
+29   if (a) out += a;
+30   if (b) out += "-" + b;
+31   return out;
+32 }
+33 
+34 export default function RegisterPage() {
+35   const router = useRouter();
+36   const [form, setForm] = useState({
+37     name: "",
+38     cpf: "",
+39     birthDate: "",
+40     email: "",
+41     phone: "",
+42     password: "",
+43     confirmPassword: ""
+44   });
+45   const [loading, setLoading] = useState(false);
+46   const [err, setErr] = useState<string | null>(null);
+47 
+48   function update<K extends keyof typeof form>(k: K, v: string) {
+49     setForm((f) => ({ ...f, [k]: v }));
+50   }
+51 
+52   async function onSubmit(e: React.FormEvent) {
+53     e.preventDefault();
+54     setLoading(true);
+55     setErr(null);
+56 
+57     // normalizações
+58     const email = form.email.trim().toLowerCase();
+59     const cpf = form.cpf.trim();
+60     const phone = form.phone.trim();
+61     const name = form.name.trim();
+62 
+63     if (form.password.length < 8) {
+64       setErr("A senha deve ter pelo menos 8 caracteres");
+65       setLoading(false);
+66       return;
+67     }
+68     if (form.password !== form.confirmPassword) {
+69       setErr("As senhas não conferem");
+70       setLoading(false);
+71       return;
+72     }
+73     // Validações básicas de client
+74     if (onlyDigits(cpf).length !== 11) {
+75       setErr("CPF inválido");
+76       setLoading(false);
+77       return;
+78     }
+79     const phoneDigits = onlyDigits(phone);
+80     if (!(phoneDigits.length === 10 || phoneDigits.length === 11)) {
+81       setErr("Telefone inválido");
+82       setLoading(false);
+83       return;
+84     }
+85     if (!form.birthDate) {
+86       setErr("Informe a data de nascimento");
+87       setLoading(false);
+88       return;
+89     }
+90 
+91     try {
+92       const res = await fetch("/api/auth/register", {
+93         method: "POST",
+94         headers: { "content-type": "application/json" },
+95         body: JSON.stringify({
+96           ...form,
+97           name,
+98           cpf,        // API já remove dígitos; máscara ok
+99           phone,      // idem
+100           email       // normalizado
+101         })
+102       });
+103       const data = await res.json().catch(()=> ({}));
+104       if (!res.ok || !data?.ok) {
+105         setErr(data?.error ?? "Erro ao criar conta");
+106       } else {
+107         router.push("/login");
+108       }
+109     } catch {
+110       setErr("Falha de rede. Tente novamente.");
+111     } finally {
+112       setLoading(false);
+113     }
+114   }
+115 
+116   return (
+117     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+118       <section className="hidden lg:flex items-center justify-center bg-[var(--color-brand-blue)] text-white">
+119         <div className="max-w-xl px-8">
+120           <h2 className="text-4xl font-extrabold leading-tight">
+121             Crie sua conta EDUCC
+122           </h2>
+123           <p className="mt-4 text-white/90">
+124             Acesso rápido e seguro.
+125           </p>
+126         </div>
+127       </section>
+128 
+129       <section className="flex items-center justify-center p-6 lg:p-12">
+130         <div className="card p-8 max-w-lg w-full">
+131           <div className="flex items-center justify-between mb-6">
+132             <div className="flex items-center gap-3">
+133               <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+134               <span className="font-semibold">EDUCC</span>
+135             </div>
+136             <Link href="/login" className="text-sm text-[var(--color-brand-blue)] hover:underline">
+137               Já tenho conta
+138             </Link>
+139           </div>
+140 
+141           <h1 className="text-2xl font-semibold mb-1">Criar conta</h1>
+142           <p className="text-sm text-gray-500 mb-6">Preencha seus dados</p>
+143 
+144           <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+145             <div className="sm:col-span-2">
+146               <label className="block text-sm mb-1">Nome completo</label>
+147               <input
+148                 className="input"
+149                 value={form.name}
+150                 onChange={e=>update("name", e.target.value)}
+151                 required
+152                 autoComplete="name"
+153               />
+154             </div>
+155 
+156             <div>
+157               <label className="block text-sm mb-1">CPF</label>
+158               <input
+159                 className="input"
+160                 inputMode="numeric"
+161                 placeholder="000.000.000-00"
+162                 value={form.cpf}
+163                 onChange={(e) => update("cpf", maskCPF(e.target.value))}
+164                 maxLength={14}                             
+165                 required
+166                 pattern="^\d{3}\.\d{3}\.\d{3}-\d{2}$"
+167                 title="Formato: 000.000.000-00"
+168                 autoComplete="off"
+169               />
+170             </div>
+171 
+172             <div>
+173               <label className="block text-sm mb-1">Data de nascimento</label>
+174               <input
+175                 className="input"
+176                 type="date"
+177                 value={form.birthDate}
+178                 onChange={e=>update("birthDate", e.target.value)}
+179                 required
+180                 autoComplete="bday"
+181               />
+182             </div>
+183 
+184             <div>
+185               <label className="block text-sm mb-1">E-mail</label>
+186               <input
+187                 className="input"
+188                 type="email"
+189                 placeholder="exemplo@email.com"
+190                 value={form.email}
+191                 onChange={(e) => update("email", e.target.value.trim())}
+192                 required
+193                 autoComplete="email"
+194               />
+195             </div>
+196 
+197             <div>
+198               <label className="block text-sm mb-1">Telefone (Whats)</label>
+199               <input
+200                 className="input"
+201                 type="tel"
+202                 inputMode="tel"
+203                 placeholder="(00) 00000-0000"
+204                 value={form.phone}
+205                 onChange={(e) => update("phone", maskPhoneBR(e.target.value))}
+206                 maxLength={15}
+207                 required
+208                 pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"
+209                 title="Formato: (00) 00000-0000"
+210                 autoComplete="tel"
+211               />
+212             </div>
+213 
+214             <div>
+215               <label className="block text-sm mb-1">Senha</label>
+216               <input
+217                 className="input"
+218                 type="password"
+219                 value={form.password}
+220                 onChange={e=>update("password", e.target.value)}
+221                 required
+222                 minLength={8}
+223                 autoComplete="new-password"
+224               />
+225             </div>
+226 
+227             <div>
+228               <label className="block text-sm mb-1">Confirmar senha</label>
+229               <input
+230                 className="input"
+231                 type="password"
+232                 value={form.confirmPassword}
+233                 onChange={e=>update("confirmPassword", e.target.value)}
+234                 required
+235                 minLength={8}
+236                 autoComplete="new-password"
+237               />
+238             </div>
+239 
+240             {err && <p className="sm:col-span-2 text-sm text-red-600">{err}</p>}
+241 
+242             <div className="sm:col-span-2">
+243               <button type="submit" className="btn-primary w-full" disabled={loading}>
+244                 {loading ? "Criando..." : "Criar conta"}
+245               </button>
+246             </div>
+247           </form>
+248         </div>
+249       </section>
+250     </main>
+251   );
+252 }
+
+===== app/(auth)/recover/page.tsx =====
+1 import { redirect } from "next/navigation";
+2 
+3 export default function Page() {
+4   // redireciona imediatamente
+5   redirect("/recover-email");
+6 }
+
+===== middleware.ts =====
+1 import { NextResponse } from "next/server";
+2 import type { NextRequest } from "next/server";
+3 
+4 export function middleware(req: NextRequest) {
+5   const path = req.nextUrl.pathname;
+6 
+7   // Corrige / (auth) /register e / (auth) /recover
+8   if (path === "/(auth)/register") {
+9     const url = req.nextUrl.clone();
+10     url.pathname = "/register";
+11     return NextResponse.redirect(url);
+12   }
+13   if (path === "/(auth)/recover") {
+14     const url = req.nextUrl.clone();
+15     url.pathname = "/recover-email";
+16     return NextResponse.redirect(url);
+17   }
+18 
+19   return NextResponse.next();
+20 }
+21 
+22 export const config = {
+23   matcher: ["/(auth)/register", "/(auth)/recover"]
+24 };
+
+===== next.config.js =====
+1 import withPWA from "next-pwa";
+2 
+3 const isProd = process.env.NODE_ENV === "production";
+4 
+5 const runtimeCaching = [
+6   { urlPattern: ({ request }) => request.mode === "navigate",
+7     handler: "NetworkFirst",
+8     options: { cacheName: "pages", expiration: { maxEntries: 50, maxAgeSeconds: 7*24*3600 } } },
+9   { urlPattern: /_next\/static\/.*/i,
+10     handler: "StaleWhileRevalidate",
+11     options: { cacheName: "next-static" } },
+12   { urlPattern: /\/icons\/.*\.png$/i,
+13     handler: "CacheFirst",
+14     options: { cacheName: "icons", expiration: { maxEntries: 16 } } },
+15   { urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
+16     handler: "StaleWhileRevalidate",
+17     options: { cacheName: "images" } },
+18   { urlPattern: /\/api\/.*/i,
+19     handler: "NetworkFirst",
+20     options: { cacheName: "api", networkTimeoutSeconds: 3 } }
+21 ];
+22 
+23 // ⬇️ eslint deve ficar aqui (fora do withPWA)
+24 const baseConfig = {
+25   reactStrictMode: true,
+26   eslint: { ignoreDuringBuilds: true }
+27 };
+28 
+29 export default withPWA({
+30   dest: "public",
+31   disable: !isProd,
+32   register: true,
+33   skipWaiting: true,
+34   runtimeCaching,
+35   fallbacks: { document: "/offline" }
+36 })(baseConfig);
+
+===== next.config.mjs =====
+1 // next.config.mjs — PWA habilitado em produção
+2 import withPWA from 'next-pwa';
+3 
+4 const isDev = process.env.NODE_ENV !== 'production';
+5 
+6 export default withPWA({
+7   dest: 'public',
+8   register: true,
+9   skipWaiting: true,
+10   disable: isDev,
+11   fallbacks: { document: '/offline' },
+12   // Ajustes finos de cache (opcional)
+13   runtimeCaching: [
+14     {
+15       urlPattern: ({ request }) => request.destination === 'image',
+16       handler: 'CacheFirst',
+17       options: { cacheName: 'images', expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 } }
+18     },
+19     {
+20       urlPattern: ({ request }) => ['style','script','font'].includes(request.destination),
+21       handler: 'StaleWhileRevalidate',
+22       options: { cacheName: 'assets' }
+23     }
+24   ]
+25 })({
+26   // Outras opções do projeto (se precisar)
+27 });
+
+===== next.config.ts =====
+1 import type { NextConfig } from "next";
+2 
+3 const nextConfig: NextConfig = {
+4   /* config options here */
+5 };
+6 
+7 export default nextConfig;
+
+===== app/layout.tsx =====
+1 import "./globals.css";
+2 export { metadata, viewport } from "./metadata";
+3 
+4 export default function RootLayout({ children }: { children: React.ReactNode }) {
+5   return (
+6     <html lang="pt-BR"><head><link rel="manifest" href="/manifest.webmanifest" /></head><body>{children}</body>
+7     </html>
+8   );
+9 }
+
+===== app/page.tsx =====
+1 import LoginCard from "@/components/LoginCard";
+2 export const dynamic = "force-dynamic";
+3 
+4 export default function Home() {
+5   return (
+6     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+7       {/* Hero azul (desktop) */}
+8       <section className="hidden lg:flex items-center justify-center bg-brand-blue text-white">
+9         <div className="max-w-xl px-8">
+10           <h2 className="text-4xl font-extrabold leading-tight">
+11             Bem-vindo(a) ao <br /> EDUCC
+12           </h2>
+13           <p className="mt-4 text-white/90">
+14             Sua plataforma educacional — instalável como app (PWA) em Web, Android e iOS.
+15           </p>
+16         </div>
+17       </section>
+18 
+19       {/* Coluna do formulário */}
+20       <section className="flex items-center justify-center p-6 lg:p-12">
+21         <LoginCard />
+22       </section>
+23     </main>
+24   );
+25 }
+
+===== lib/session.ts =====
+1 import { cookies, headers } from "next/headers";
+2 import { prisma } from "@/lib/prisma";
+3 import { ClassRole } from "@prisma/client";
+4 
+5 const COOKIE_NAME = "session_user_id";
+6 
+7 /** Lê o userId do cookie (async em Next 15) */
+8 export async function getSessionUserId(): Promise<string | null> {
+9   try {
+10     const c = await cookies();
+11     const id = c.get(COOKIE_NAME)?.value || null;
+12     return id;
+13   } catch {
+14     // Fallback para contexts onde cookies() não está disponível
+15     const h = await headers();
+16     const cookieHeader = h.get("cookie") || "";
+17     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+18     return m ? m[1] : null;
+19   }
+20 }
+21 
+22 /** Busca o usuário logado; retorna null se não houver */
+23 export async function requireUser() {
+24   const id = await getSessionUserId();
+25   if (!id) return null;
+26   const user = await prisma.user.findUnique({
+27     where: { id },
+28     select: { id: true, name: true, email: true }
+29   });
+30   return user;
+31 }
+32 
+33 /** Apaga o cookie de sessão (async em Next 15) */
+34 export async function clearSessionCookie() {
+35   const c = await cookies();
+36   c.set({
+37     name: COOKIE_NAME,
+38     value: "",
+39     httpOnly: true,
+40     path: "/",
+41     maxAge: 0
+42   });
+43 }
+44 
+45 // === Access helpers (ClassAccess) ============================================
+46 
+47 /**
+48  * Retorna o papel do usuário na turma (PROFESSOR | GESTOR) ou null se não tem acesso.
+49  */
+50 export async function getRole(userId: string, classId: string): Promise<ClassRole | null> {
+51   try {
+52     const row = await prisma.classAccess.findFirst({
+53       where: { classId, userId },
+54       select: { role: true },
+55     });
+56     return row?.role ?? null;
+57   } catch (_e) {
+58     return null;
+59   }
+60 }
+61 
+62 /** Versão que usa o usuário logado da sessão atual. */
+63 export async function getMyRole(classId: string): Promise<ClassRole | null> {
+64   const me = await requireUser();
+65   if (!me) return null;
+66   return getRole(me.id, classId);
+67 }
+68 
+69 /** Açúcares para checagens rápidas na UI/rota. */
+70 export function roleFlags(role: ClassRole | null) {
+71   return {
+72     isProfessor: role === "PROFESSOR",
+73     isGestor: role === "GESTOR",
+74     hasAccess: role === "PROFESSOR" || role === "GESTOR",
+75   };
+76 }
+
+===== components/AuthGate.tsx =====
+[MISSING] components/AuthGate.tsx
+
+===== hooks/useMe.ts =====
+[MISSING] hooks/useMe.ts

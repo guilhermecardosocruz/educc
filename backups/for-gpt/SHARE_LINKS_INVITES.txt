@@ -1,0 +1,406 @@
+
+===== app/api/classes/[id]/access/links/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { logAudit } from "@/lib/audit";
+5 import { z } from "zod";
+6 
+7 const createSchema = z.object({
+8   role: z.enum(["PROFESSOR", "GESTOR"]),
+9   note: z.string().max(200).optional(),
+10   promotional: z.boolean().optional(), // se true e role=PROFESSOR, ativa promo automática
+11 });
+12 
+13 const revokeSchema = z.object({
+14   linkId: z.string().min(1),
+15 });
+16 
+17 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+18   const { id } = await ctx.params;
+19   const user = await requireUser();
+20   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+21 
+22   // GET liberado para PROFESSOR e GESTOR
+23   const role = await getRole(user.id, id);
+24   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+25 
+26   const rows = await prisma.shareLink.findMany({
+27     where: { classId: id, isRevoked: false },
+28     orderBy: { createdAt: "desc" },
+29     select: { id:true, token:true, role:true, createdAt:true, createdBy:true, isPromotional:true }
+30   });
+31 
+32   return NextResponse.json({ ok:true, links: rows });
+33 }
+34 
+35 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+36   const { id } = await ctx.params;
+37   const user = await requireUser();
+38   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+39 
+40   // Apenas PROFESSOR cria/gera link
+41   const role = await getRole(user.id, id);
+42   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+43 
+44   const body = await req.json().catch(()=> ({}));
+45   const parsed = createSchema.safeParse(body);
+46   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+47 
+48   const token = crypto.randomUUID().replace(/-/g, "");
+49   const created = await prisma.shareLink.create({
+50     data: {
+51       classId: id,
+52       token,
+53       role: parsed.data.role,
+54       createdBy: user.id,
+55       isPromotional: !!parsed.data.promotional && parsed.data.role === "PROFESSOR",
+56     },
+57     select: { id:true, token:true, role:true, createdAt:true, createdBy:true, isPromotional:true }
+58   });
+59 
+60   await logAudit(id, "LINK_CREATED", {
+61     actorId: user.id,
+62     metadata: { linkId: created.id, role: created.role, promotional: created.isPromotional }
+63   });
+64 
+65   return NextResponse.json({ ok:true, link: created }, { status: 201 });
+66 }
+67 
+68 // Revogar (equivale a "rotacionar": você cria outro e revoga este)
+69 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+70   const { id } = await ctx.params;
+71   const user = await requireUser();
+72   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+73 
+74   // Apenas PROFESSOR pode revogar
+75   const role = await getRole(user.id, id);
+76   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+77 
+78   const body = await req.json().catch(()=> ({}));
+79   const parsed = revokeSchema.safeParse(body);
+80   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+81 
+82   const link = await prisma.shareLink.findFirst({
+83     where: { id: parsed.data.linkId, classId: id, isRevoked: false },
+84     select: { id:true }
+85   });
+86   if (!link) return NextResponse.json({ ok:false, error:"Link não encontrado" }, { status: 404 });
+87 
+88   await prisma.shareLink.update({
+89     where: { id: link.id },
+90     data: { isRevoked: true }
+91   });
+92 
+93   await logAudit(id, "LINK_REVOKED", {
+94     actorId: user.id,
+95     metadata: { linkId: link.id }
+96   });
+97 
+98   return NextResponse.json({ ok:true });
+99 }
+
+===== app/api/classes/[id]/access/members/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getMyRole } from "@/lib/session";
+4 
+5 export const runtime = "nodejs";
+6 export const dynamic = "force-dynamic";
+7 
+8 // GET -> lista membros
+9 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+10   const { id } = await ctx.params;
+11   const me = await requireUser();
+12   if (!me) return NextResponse.json({ ok:false }, { status: 401 });
+13 
+14   const myRole = await getMyRole(id);
+15   if (!myRole) return NextResponse.json({ ok:false }, { status: 403 });
+16 
+17   const members = await prisma.classAccess.findMany({
+18     where: { classId: id },
+19     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+20     select: { userId:true, role:true, createdAt:true, user: { select: { id:true, name:true, email:true } } }
+21   });
+22 
+23   return NextResponse.json({ ok:true, members });
+24 }
+25 
+26 // POST -> conceder acesso por e-mail já cadastrado
+27 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+28   const { id } = await ctx.params;
+29   const me = await requireUser();
+30   if (!me) return NextResponse.json({ ok:false }, { status: 401 });
+31 
+32   const myRole = await getMyRole(id);
+33   if (myRole !== "PROFESSOR") {
+34     return NextResponse.json({ ok:false, error:"Apenas professor pode convidar" }, { status: 403 });
+35   }
+36 
+37   const body = await req.json().catch(() => ({}));
+38   const email = (body?.email ?? "").toString().trim().toLowerCase();
+39   const role  = (body?.role  ?? "").toString().trim().toUpperCase();
+40 
+41   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+42     return NextResponse.json({ ok:false, error:"E-mail inválido" }, { status: 400 });
+43   }
+44   if (!["PROFESSOR","GESTOR"].includes(role)) {
+45     return NextResponse.json({ ok:false, error:"Papel inválido" }, { status: 400 });
+46   }
+47 
+48   const target = await prisma.user.findUnique({
+49     where: { email },
+50     select: { id:true, email:true, name:true }
+51   });
+52   if (!target) {
+53     return NextResponse.json({ ok:false, error:"Usuário não encontrado" }, { status: 404 });
+54   }
+55 
+56   if (role === "PROFESSOR") {
+57     const existingProf = await prisma.classAccess.findFirst({
+58       where: { classId: id, role: "PROFESSOR" },
+59       select: { id:true, userId:true }
+60     });
+61     if (existingProf && existingProf.userId !== target.id) {
+62       return NextResponse.json({ ok:false, error:"Já existe um professor nesta turma." }, { status: 409 });
+63     }
+64   }
+65 
+66   const access = await prisma.classAccess.upsert({
+67     where: { class_user_unique: { classId: id, userId: target.id } },
+68     update: { role: role as any },
+69     create: { classId: id, userId: target.id, role: role as any },
+70     select: { userId:true, role:true }
+71   });
+72 
+73   await prisma.auditLog.create({
+74     data: {
+75       classId: id,
+76       actorId: me.id,
+77       type: "ACCESS_GRANTED_EMAIL",
+78       metadata: { targetEmail: email, targetUserId: target.id, role }
+79     }
+80   });
+81 
+82   return NextResponse.json({ ok:true, access });
+83 }
+84 
+85 // DELETE -> revogar acesso (?userId=...)
+86 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+87   const { id } = await ctx.params;
+88   const me = await requireUser();
+89   if (!me) return NextResponse.json({ ok:false }, { status: 401 });
+90 
+91   const myRole = await getMyRole(id);
+92   if (!myRole) return NextResponse.json({ ok:false }, { status: 403 });
+93 
+94   const { searchParams } = new URL(req.url);
+95   const userId = searchParams.get("userId");
+96   if (!userId) return NextResponse.json({ ok:false, error:"userId é obrigatório" }, { status: 400 });
+97 
+98   const target = await prisma.classAccess.findFirst({
+99     where: { classId: id, userId },
+100     select: { id:true, role:true }
+101   });
+102   if (!target) return NextResponse.json({ ok:false, error:"membro não encontrado" }, { status: 404 });
+103 
+104   if (target.role === "PROFESSOR" && myRole !== "GESTOR") {
+105     return NextResponse.json({ ok:false, error:"apenas gestor pode remover professor" }, { status: 403 });
+106   }
+107 
+108   await prisma.$transaction(async (tx) => {
+109     await tx.classAccess.delete({ where: { id: target.id } });
+110     await tx.auditLog.create({
+111       data: { classId: id, actorId: me.id, type: "ACCESS_REVOKED", metadata: { targetUserId: userId, targetRole: target.role } }
+112     });
+113   });
+114 
+115   return NextResponse.json({ ok:true });
+116 }
+
+===== app/api/share/[token]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { logAudit } from "@/lib/audit";
+5 
+6 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+7   const { token } = await ctx.params;
+8   const user = await requireUser();
+9   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+10 
+11   const link = await prisma.shareLink.findFirst({
+12     where: { token, isRevoked: false },
+13     select: { id:true, classId:true, role:true, isPromotional:true, createdBy:true }
+14   });
+15   if (!link) return NextResponse.json({ ok:false, error:"Link inválido" }, { status: 404 });
+16 
+17   const classId = link.classId;
+18 
+19   // Se for PROFESSOR, precisa garantir unicidade
+20   if (link.role === "PROFESSOR") {
+21     const existingProf = await prisma.classAccess.findFirst({
+22       where: { classId, role: "PROFESSOR" },
+23       select: { id:true, userId:true }
+24     });
+25     if (existingProf && existingProf.userId !== user.id) {
+26       // Bloqueia — já existe professor
+27       await logAudit(classId, "CLAIM_BLOCKED_PROFESSOR_EXISTS", {
+28         actorId: user.id,
+29         metadata: { linkId: link.id }
+30       });
+31       return NextResponse.json({ ok:false, error:"Já existe um professor nesta turma." }, { status: 409 });
+32     }
+33   }
+34 
+35   // Transação: marcar uso do link e conceder acesso
+36   const out = await prisma.$transaction(async (tx) => {
+37     // marca uso do link (não revoga automaticamente — fica histórico)
+38     await tx.shareLink.update({
+39       where: { id: link.id },
+40       data: { usedAt: new Date() },
+41     });
+42 
+43     // promoção automática?
+44     if (link.isPromotional && link.role === "PROFESSOR") {
+45       // 1) criador vira GESTOR (se ainda não for)
+46       await tx.classAccess.upsert({
+47         where: { class_user_unique: { classId, userId: link.createdBy } },
+48         update: { role: "GESTOR" },
+49         create: { classId, userId: link.createdBy, role: "GESTOR" },
+50       });
+51       // 2) convidado vira PROFESSOR
+52       await tx.classAccess.upsert({
+53         where: { class_user_unique: { classId, userId: user.id } },
+54         update: { role: "PROFESSOR" },
+55         create: { classId, userId: user.id, role: "PROFESSOR" },
+56       });
+57       return { promoted: true };
+58     }
+59 
+60     // fluxo normal: aplica o papel do link
+61     await tx.classAccess.upsert({
+62       where: { class_user_unique: { classId, userId: user.id } },
+63       update: { role: link.role },
+64       create: { classId, userId: user.id, role: link.role },
+65     });
+66 
+67     return { promoted: false };
+68   });
+69 
+70   // logs
+71   await logAudit(classId, "CLAIM_OK", {
+72     actorId: user.id,
+73     metadata: { linkId: link.id, role: link.role }
+74   });
+75   if (out.promoted) {
+76     await logAudit(classId, "CREATOR_PROMOTED", {
+77       actorId: user.id,
+78       metadata: { linkId: link.id, creatorId: link.createdBy }
+79     });
+80   }
+81 
+82   return NextResponse.json({ ok:true, promoted: out.promoted });
+83 }
+
+===== app/api/share/[token]/_claim.ts =====
+1 import { prisma } from "@/lib/prisma";
+2 
+3 type ClaimInput = { token: string; userId: string; expectedClassId?: string };
+4 type ClaimResult = { ok: true; classId: string; roleGranted: "PROFESSOR"|"GESTOR" } |
+5                    { ok: false; error: string; status?: number };
+6 
+7 export async function claimToken(input: ClaimInput): Promise<ClaimResult> {
+8   const link = await prisma.shareLink.findFirst({
+9     where: { token: input.token },
+10     select: { id:true, classId:true, role:true, createdBy:true }
+11   });
+12   if (!link) return { ok:false, error:"link inválido ou revogado", status: 404 };
+13   if (input.expectedClassId && input.expectedClassId !== link.classId) {
+14     return { ok:false, error:"token não corresponde à turma", status: 400 };
+15   }
+16 
+17   return prisma.$transaction(async (tx) => {
+18     // verifica se já tem acesso
+19     const existing = await tx.classAccess.findFirst({
+20       where: { classId: link.classId, userId: input.userId }
+21     });
+22     if (existing) {
+23       // já tem acesso — nada a fazer
+24       await tx.auditLog.create({
+25         data: { classId: link.classId, actorId: input.userId, type: "LINK_CLAIMED_ALREADY", metadata: { linkId: link.id } }
+26       });
+27       return { ok:true, classId: link.classId, roleGranted: existing.role as any };
+28     }
+29 
+30     if (link.role === "PROFESSOR") {
+31       // há professor?
+32       const currentProf = await tx.classAccess.findFirst({
+33         where: { classId: link.classId, role: "PROFESSOR" },
+34         select: { id:true, userId:true }
+35       });
+36 
+37       if (currentProf) {
+38         // regra: se o PROFESSOR que gerou o link é o professor atual -> promove criador a GESTOR e dá professor ao claimant
+39         if (currentProf.userId === link.createdBy) {
+40           // 1) promove criador a GESTOR
+41           await tx.classAccess.update({ where: { id: currentProf.id }, data: { role: "GESTOR" } });
+42 
+43           // 2) concede PROFESSOR ao claimant
+44           await tx.classAccess.create({
+45             data: { classId: link.classId, userId: input.userId, role: "PROFESSOR" }
+46           });
+47 
+48           await tx.auditLog.create({
+49             data: {
+50               classId: link.classId,
+51               actorId: input.userId,
+52               type: "CREATOR_PROMOTED",
+53               metadata: { from: "PROFESSOR", to: "GESTOR", creatorId: link.createdBy, linkId: link.id }
+54             }
+55           });
+56 
+57           return { ok:true, classId: link.classId, roleGranted: "PROFESSOR" };
+58         }
+59 
+60         // se já existe professor e não é o criador → bloqueia
+61         await tx.auditLog.create({
+62           data: { classId: link.classId, actorId: input.userId, type: "CLAIM_BLOCKED_PROFESSOR_EXISTS", metadata: { linkId: link.id } }
+63         });
+64         return { ok:false, error:"esta turma já possui professor", status: 409 };
+65       }
+66 
+67       // não existe professor: concede normalmente
+68       await tx.classAccess.create({
+69         data: { classId: link.classId, userId: input.userId, role: "PROFESSOR" }
+70       });
+71       await tx.auditLog.create({
+72         data: { classId: link.classId, actorId: input.userId, type: "LINK_CLAIMED", metadata: { linkId: link.id, role: "PROFESSOR" } }
+73       });
+74       return { ok:true, classId: link.classId, roleGranted: "PROFESSOR" };
+75     }
+76 
+77     // link de GESTOR: concede GESTOR (ilimitado)
+78     await tx.classAccess.create({
+79       data: { classId: link.classId, userId: input.userId, role: "GESTOR" }
+80     });
+81     await tx.auditLog.create({
+82       data: { classId: link.classId, actorId: input.userId, type: "LINK_CLAIMED", metadata: { linkId: link.id, role: "GESTOR" } }
+83     });
+84     return { ok:true, classId: link.classId, roleGranted: "GESTOR" };
+85   });
+86 }
+
+===== app/api/classes/[id]/access/role/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { getMyRole } from "@/lib/session";
+3 
+4 export const runtime = "nodejs";
+5 export const dynamic = "force-dynamic";
+6 
+7 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+8   const { id } = await ctx.params;
+9   const role = await getMyRole(id); // "PROFESSOR" | "GESTOR" | null
+10   if (!role) return NextResponse.json({ ok:false, role:null }, { status: 403 });
+11   return NextResponse.json({ ok:true, role });
+12 }

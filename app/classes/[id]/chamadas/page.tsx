@@ -1,23 +1,27 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getMyRole } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
+  const role = await getMyRole(id); // PROFESSOR | GESTOR | null
   const cls = await prisma.class.findFirst({
     where: { id },
     select: { id: true, name: true }
   });
 
-  if (!cls) {
+  if (!cls || !role) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10">
         <div className="rounded-2xl border bg-white p-8 text-center">
-          <p className="text-lg font-medium text-gray-700">Turma não encontrada.</p>
+          <p className="text-lg font-medium text-gray-700">
+            {cls ? "Você não tem acesso a esta turma." : "Turma não encontrada."}
+          </p>
           <Link
-            href="/classes"
+            href="/dashboard"
             className="mt-4 inline-flex rounded-xl bg-[#0A66FF] px-4 py-2 text-white shadow hover:opacity-90"
           >
             Voltar
@@ -32,6 +36,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     orderBy: [{ seq: "desc" }],
     select: { seq: true, title: true }
   });
+
+  const canEdit = role === "PROFESSOR";
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -51,18 +57,22 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <h1 className="text-xl font-semibold text-gray-900">
               Chamadas — <span className="text-[#0A66FF]">{cls.name}</span>
             </h1>
-            <p className="mt-1 text-sm text-gray-600">Gerencie as chamadas desta turma.</p>
+            <p className="mt-1 text-sm text-gray-600">
+              {canEdit ? "Gerencie as chamadas desta turma." : "Visualize as chamadas desta turma."}
+            </p>
           </div>
 
-          <Link
-            href={`/classes/${cls.id}/chamadas/new`}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="-ms-1">
-              <path fill="currentColor" d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2z"/>
-            </svg>
-            Nova chamada
-          </Link>
+          {canEdit && (
+            <Link
+              href={`/classes/${cls.id}/chamadas/new`}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="-ms-1">
+                <path fill="currentColor" d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2z"/>
+              </svg>
+              Nova chamada
+            </Link>
+          )}
         </div>
       </div>
 
@@ -71,13 +81,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div className="rounded-2xl border bg-white shadow-sm">
           {attendances.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-700">Ainda não há chamadas nesta turma.</p>
-              <Link
-                href={`/classes/${cls.id}/chamadas/new`}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0A66FF] px-4 py-2 text-sm font-medium text-[#0A66FF] hover:bg-[#0A66FF] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
-              >
-                Criar primeira chamada
-              </Link>
+              <p className="text-gray-700">
+                {canEdit ? "Ainda não há chamadas nesta turma." : "Nenhuma chamada registrada nesta turma."}
+              </p>
+              {canEdit && (
+                <Link
+                  href={`/classes/${cls.id}/chamadas/new`}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0A66FF] px-4 py-2 text-sm font-medium text-[#0A66FF] hover:bg-[#0A66FF] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#0A66FF]"
+                >
+                  Criar primeira chamada
+                </Link>
+              )}
             </div>
           ) : (
             <ul className="divide-y divide-blue-100">

@@ -1,0 +1,1114 @@
+
+===== app/api/share/[token]/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { logAudit } from "@/lib/audit";
+5 
+6 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+7   const { token } = await ctx.params;
+8   const user = await requireUser();
+9   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+10 
+11   const link = await prisma.shareLink.findFirst({
+12     where: { token, isRevoked: false },
+13     select: { id:true, classId:true, role:true, isPromotional:true, createdBy:true }
+14   });
+15   if (!link) return NextResponse.json({ ok:false, error:"Link inválido" }, { status: 404 });
+16 
+17   const classId = link.classId;
+18 
+19   // Se for PROFESSOR, precisa garantir unicidade
+20   if (link.role === "PROFESSOR") {
+21     const existingProf = await prisma.classAccess.findFirst({
+22       where: { classId, role: "PROFESSOR" },
+23       select: { id:true, userId:true }
+24     });
+25     if (existingProf && existingProf.userId !== user.id) {
+26       // Bloqueia — já existe professor
+27       await logAudit(classId, "CLAIM_BLOCKED_PROFESSOR_EXISTS", {
+28         actorId: user.id,
+29         metadata: { linkId: link.id }
+30       });
+31       return NextResponse.json({ ok:false, error:"Já existe um professor nesta turma." }, { status: 409 });
+32     }
+33   }
+34 
+35   // Transação: marcar uso do link e conceder acesso
+36   const out = await prisma.$transaction(async (tx) => {
+37     // marca uso do link (não revoga automaticamente — fica histórico)
+38     await tx.shareLink.update({
+39       where: { id: link.id },
+40       data: { usedAt: new Date() },
+41     });
+42 
+43     // promoção automática?
+44     if (link.isPromotional && link.role === "PROFESSOR") {
+45       // 1) criador vira GESTOR (se ainda não for)
+46       await tx.classAccess.upsert({
+47         where: { class_user_unique: { classId, userId: link.createdBy } },
+48         update: { role: "GESTOR" },
+49         create: { classId, userId: link.createdBy, role: "GESTOR" },
+50       });
+51       // 2) convidado vira PROFESSOR
+52       await tx.classAccess.upsert({
+53         where: { class_user_unique: { classId, userId: user.id } },
+54         update: { role: "PROFESSOR" },
+55         create: { classId, userId: user.id, role: "PROFESSOR" },
+56       });
+57       return { promoted: true };
+58     }
+59 
+60     // fluxo normal: aplica o papel do link
+61     await tx.classAccess.upsert({
+62       where: { class_user_unique: { classId, userId: user.id } },
+63       update: { role: link.role },
+64       create: { classId, userId: user.id, role: link.role },
+65     });
+66 
+67     return { promoted: false };
+68   });
+69 
+70   // logs
+71   await logAudit(classId, "CLAIM_OK", {
+72     actorId: user.id,
+73     metadata: { linkId: link.id, role: link.role }
+74   });
+75   if (out.promoted) {
+76     await logAudit(classId, "CREATOR_PROMOTED", {
+77       actorId: user.id,
+78       metadata: { linkId: link.id, creatorId: link.createdBy }
+79     });
+80   }
+81 
+82   return NextResponse.json({ ok:true, promoted: out.promoted });
+83 }
+
+===== app/api/share/[token]/_claim.ts =====
+1 import { prisma } from "@/lib/prisma";
+2 
+3 type ClaimInput = { token: string; userId: string; expectedClassId?: string };
+4 type ClaimResult = { ok: true; classId: string; roleGranted: "PROFESSOR"|"GESTOR" } |
+5                    { ok: false; error: string; status?: number };
+6 
+7 export async function claimToken(input: ClaimInput): Promise<ClaimResult> {
+8   const link = await prisma.shareLink.findFirst({
+9     where: { token: input.token },
+10     select: { id:true, classId:true, role:true, createdBy:true }
+11   });
+12   if (!link) return { ok:false, error:"link inválido ou revogado", status: 404 };
+13   if (input.expectedClassId && input.expectedClassId !== link.classId) {
+14     return { ok:false, error:"token não corresponde à turma", status: 400 };
+15   }
+16 
+17   return prisma.$transaction(async (tx) => {
+18     // verifica se já tem acesso
+19     const existing = await tx.classAccess.findFirst({
+20       where: { classId: link.classId, userId: input.userId }
+21     });
+22     if (existing) {
+23       // já tem acesso — nada a fazer
+24       await tx.auditLog.create({
+25         data: { classId: link.classId, actorId: input.userId, type: "LINK_CLAIMED_ALREADY", metadata: { linkId: link.id } }
+26       });
+27       return { ok:true, classId: link.classId, roleGranted: existing.role as any };
+28     }
+29 
+30     if (link.role === "PROFESSOR") {
+31       // há professor?
+32       const currentProf = await tx.classAccess.findFirst({
+33         where: { classId: link.classId, role: "PROFESSOR" },
+34         select: { id:true, userId:true }
+35       });
+36 
+37       if (currentProf) {
+38         // regra: se o PROFESSOR que gerou o link é o professor atual -> promove criador a GESTOR e dá professor ao claimant
+39         if (currentProf.userId === link.createdBy) {
+40           // 1) promove criador a GESTOR
+41           await tx.classAccess.update({ where: { id: currentProf.id }, data: { role: "GESTOR" } });
+42 
+43           // 2) concede PROFESSOR ao claimant
+44           await tx.classAccess.create({
+45             data: { classId: link.classId, userId: input.userId, role: "PROFESSOR" }
+46           });
+47 
+48           await tx.auditLog.create({
+49             data: {
+50               classId: link.classId,
+51               actorId: input.userId,
+52               type: "CREATOR_PROMOTED",
+53               metadata: { from: "PROFESSOR", to: "GESTOR", creatorId: link.createdBy, linkId: link.id }
+54             }
+55           });
+56 
+57           return { ok:true, classId: link.classId, roleGranted: "PROFESSOR" };
+58         }
+59 
+60         // se já existe professor e não é o criador → bloqueia
+61         await tx.auditLog.create({
+62           data: { classId: link.classId, actorId: input.userId, type: "CLAIM_BLOCKED_PROFESSOR_EXISTS", metadata: { linkId: link.id } }
+63         });
+64         return { ok:false, error:"esta turma já possui professor", status: 409 };
+65       }
+66 
+67       // não existe professor: concede normalmente
+68       await tx.classAccess.create({
+69         data: { classId: link.classId, userId: input.userId, role: "PROFESSOR" }
+70       });
+71       await tx.auditLog.create({
+72         data: { classId: link.classId, actorId: input.userId, type: "LINK_CLAIMED", metadata: { linkId: link.id, role: "PROFESSOR" } }
+73       });
+74       return { ok:true, classId: link.classId, roleGranted: "PROFESSOR" };
+75     }
+76 
+77     // link de GESTOR: concede GESTOR (ilimitado)
+78     await tx.classAccess.create({
+79       data: { classId: link.classId, userId: input.userId, role: "GESTOR" }
+80     });
+81     await tx.auditLog.create({
+82       data: { classId: link.classId, actorId: input.userId, type: "LINK_CLAIMED", metadata: { linkId: link.id, role: "GESTOR" } }
+83     });
+84     return { ok:true, classId: link.classId, roleGranted: "GESTOR" };
+85   });
+86 }
+
+===== app/api/classes/[id]/access/links/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getRole } from "@/lib/session";
+4 import { logAudit } from "@/lib/audit";
+5 import { z } from "zod";
+6 
+7 const createSchema = z.object({
+8   role: z.enum(["PROFESSOR", "GESTOR"]),
+9   note: z.string().max(200).optional(),
+10   promotional: z.boolean().optional(), // se true e role=PROFESSOR, ativa promo automática
+11 });
+12 
+13 const revokeSchema = z.object({
+14   linkId: z.string().min(1),
+15 });
+16 
+17 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+18   const { id } = await ctx.params;
+19   const user = await requireUser();
+20   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+21 
+22   // GET liberado para PROFESSOR e GESTOR
+23   const role = await getRole(user.id, id);
+24   if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+25 
+26   const rows = await prisma.shareLink.findMany({
+27     where: { classId: id, isRevoked: false },
+28     orderBy: { createdAt: "desc" },
+29     select: { id:true, token:true, role:true, createdAt:true, createdBy:true, isPromotional:true }
+30   });
+31 
+32   return NextResponse.json({ ok:true, links: rows });
+33 }
+34 
+35 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+36   const { id } = await ctx.params;
+37   const user = await requireUser();
+38   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+39 
+40   // Apenas PROFESSOR cria/gera link
+41   const role = await getRole(user.id, id);
+42   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+43 
+44   const body = await req.json().catch(()=> ({}));
+45   const parsed = createSchema.safeParse(body);
+46   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+47 
+48   const token = crypto.randomUUID().replace(/-/g, "");
+49   const created = await prisma.shareLink.create({
+50     data: {
+51       classId: id,
+52       token,
+53       role: parsed.data.role,
+54       createdBy: user.id,
+55       isPromotional: !!parsed.data.promotional && parsed.data.role === "PROFESSOR",
+56     },
+57     select: { id:true, token:true, role:true, createdAt:true, createdBy:true, isPromotional:true }
+58   });
+59 
+60   await logAudit(id, "LINK_CREATED", {
+61     actorId: user.id,
+62     metadata: { linkId: created.id, role: created.role, promotional: created.isPromotional }
+63   });
+64 
+65   return NextResponse.json({ ok:true, link: created }, { status: 201 });
+66 }
+67 
+68 // Revogar (equivale a "rotacionar": você cria outro e revoga este)
+69 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+70   const { id } = await ctx.params;
+71   const user = await requireUser();
+72   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+73 
+74   // Apenas PROFESSOR pode revogar
+75   const role = await getRole(user.id, id);
+76   if (role !== "PROFESSOR") return NextResponse.json({ ok:false, error:"Apenas professor pode alterar" }, { status: 403 });
+77 
+78   const body = await req.json().catch(()=> ({}));
+79   const parsed = revokeSchema.safeParse(body);
+80   if (!parsed.success) return NextResponse.json({ ok:false, error: parsed.error.flatten() }, { status: 400 });
+81 
+82   const link = await prisma.shareLink.findFirst({
+83     where: { id: parsed.data.linkId, classId: id, isRevoked: false },
+84     select: { id:true }
+85   });
+86   if (!link) return NextResponse.json({ ok:false, error:"Link não encontrado" }, { status: 404 });
+87 
+88   await prisma.shareLink.update({
+89     where: { id: link.id },
+90     data: { isRevoked: true }
+91   });
+92 
+93   await logAudit(id, "LINK_REVOKED", {
+94     actorId: user.id,
+95     metadata: { linkId: link.id }
+96   });
+97 
+98   return NextResponse.json({ ok:true });
+99 }
+
+===== app/api/classes/[id]/access/claim/route.ts =====
+1 import { NextResponse } from "next/server";
+2 
+3 export async function POST(req: Request) {
+4   const body = await req.json().catch(()=> ({}));
+5   const token = (body?.token ?? "").toString().trim();
+6   if (!token) return NextResponse.json({ ok:false, error:"token obrigatório" }, { status: 400 });
+7 
+8   // Reusa o endpoint central de claim
+9   const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/share/${token}`, {
+10     method: "POST",
+11     headers: { "content-type": "application/json" },
+12     // cookies/headers são do mesmo host em runtime; aqui não precisamos body
+13   });
+14 
+15   const data = await res.json().catch(()=> ({}));
+16   return NextResponse.json(data, { status: res.status });
+17 }
+
+===== app/api/classes/[id]/access/members/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser, getMyRole } from "@/lib/session";
+4 
+5 export const runtime = "nodejs";
+6 export const dynamic = "force-dynamic";
+7 
+8 // GET -> lista membros com papéis
+9 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+10   const { id } = await ctx.params;
+11   const me = await requireUser();
+12   if (!me) return NextResponse.json({ ok:false }, { status: 401 });
+13 
+14   const myRole = await getMyRole(id);
+15   if (!myRole) return NextResponse.json({ ok:false }, { status: 403 });
+16 
+17   const members = await prisma.classAccess.findMany({
+18     where: { classId: id },
+19     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+20     select: { userId:true, role:true, createdAt:true, user: { select: { id:true, name:true, email:true } } }
+21   });
+22 
+23   return NextResponse.json({ ok:true, members });
+24 }
+25 
+26 // DELETE -> revogar acesso (query: ?userId=...)
+27 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+28   const { id } = await ctx.params;
+29   const me = await requireUser();
+30   if (!me) return NextResponse.json({ ok:false }, { status: 401 });
+31 
+32   const myRole = await getMyRole(id);
+33   if (!myRole) return NextResponse.json({ ok:false }, { status: 403 });
+34 
+35   const { searchParams } = new URL(req.url);
+36   const userId = searchParams.get("userId");
+37   if (!userId) return NextResponse.json({ ok:false, error:"userId é obrigatório" }, { status: 400 });
+38 
+39   // regra: apenas GESTOR pode remover PROFESSOR; professor não remove gestor
+40   const target = await prisma.classAccess.findFirst({
+41     where: { classId: id, userId },
+42     select: { id:true, role:true }
+43   });
+44   if (!target) return NextResponse.json({ ok:false, error:"membro não encontrado" }, { status: 404 });
+45 
+46   if (target.role === "PROFESSOR" && myRole !== "GESTOR") {
+47     return NextResponse.json({ ok:false, error:"apenas gestor pode remover professor" }, { status: 403 });
+48   }
+49   // impedir remover a si mesmo como último acesso?
+50   // (por simplicidade, não tratamos aqui)
+51 
+52   await prisma.$transaction(async (tx) => {
+53     await tx.classAccess.delete({ where: { id: target.id } });
+54     await tx.auditLog.create({
+55       data: {
+56         classId: id,
+57         actorId: me.id,
+58         type: "ACCESS_REVOKED",
+59         metadata: { targetUserId: userId, targetRole: target.role }
+60       }
+61     });
+62   });
+63 
+64   return NextResponse.json({ ok:true });
+65 }
+
+===== middleware.ts =====
+1 import { NextResponse } from "next/server";
+2 import type { NextRequest } from "next/server";
+3 
+4 export function middleware(req: NextRequest) {
+5   const path = req.nextUrl.pathname;
+6 
+7   // Corrige / (auth) /register e / (auth) /recover
+8   if (path === "/(auth)/register") {
+9     const url = req.nextUrl.clone();
+10     url.pathname = "/register";
+11     return NextResponse.redirect(url);
+12   }
+13   if (path === "/(auth)/recover") {
+14     const url = req.nextUrl.clone();
+15     url.pathname = "/recover-email";
+16     return NextResponse.redirect(url);
+17   }
+18 
+19   return NextResponse.next();
+20 }
+21 
+22 export const config = {
+23   matcher: ["/(auth)/register", "/(auth)/recover"]
+24 };
+
+===== lib/session.ts =====
+1 import { cookies, headers } from "next/headers";
+2 import { prisma } from "@/lib/prisma";
+3 import { ClassRole } from "@prisma/client";
+4 
+5 const COOKIE_NAME = "session_user_id";
+6 
+7 /** Lê o userId do cookie (async em Next 15) */
+8 export async function getSessionUserId(): Promise<string | null> {
+9   try {
+10     const c = await cookies();
+11     const id = c.get(COOKIE_NAME)?.value || null;
+12     return id;
+13   } catch {
+14     // Fallback para contexts onde cookies() não está disponível
+15     const h = await headers();
+16     const cookieHeader = h.get("cookie") || "";
+17     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+18     return m ? m[1] : null;
+19   }
+20 }
+21 
+22 /** Busca o usuário logado; retorna null se não houver */
+23 export async function requireUser() {
+24   const id = await getSessionUserId();
+25   if (!id) return null;
+26   const user = await prisma.user.findUnique({
+27     where: { id },
+28     select: { id: true, name: true, email: true }
+29   });
+30   return user;
+31 }
+32 
+33 /** Apaga o cookie de sessão (async em Next 15) */
+34 export async function clearSessionCookie() {
+35   const c = await cookies();
+36   c.set({
+37     name: COOKIE_NAME,
+38     value: "",
+39     httpOnly: true,
+40     path: "/",
+41     maxAge: 0
+42   });
+43 }
+44 
+45 // === Access helpers (ClassAccess) ============================================
+46 
+47 /**
+48  * Retorna o papel do usuário na turma (PROFESSOR | GESTOR) ou null se não tem acesso.
+49  */
+50 export async function getRole(userId: string, classId: string): Promise<ClassRole | null> {
+51   try {
+52     const row = await prisma.classAccess.findFirst({
+53       where: { classId, userId },
+54       select: { role: true },
+55     });
+56     return row?.role ?? null;
+57   } catch (_e) {
+58     return null;
+59   }
+60 }
+61 
+62 /** Versão que usa o usuário logado da sessão atual. */
+63 export async function getMyRole(classId: string): Promise<ClassRole | null> {
+64   const me = await requireUser();
+65   if (!me) return null;
+66   return getRole(me.id, classId);
+67 }
+68 
+69 /** Açúcares para checagens rápidas na UI/rota. */
+70 export function roleFlags(role: ClassRole | null) {
+71   return {
+72     isProfessor: role === "PROFESSOR",
+73     isGestor: role === "GESTOR",
+74     hasAccess: role === "PROFESSOR" || role === "GESTOR",
+75   };
+76 }
+
+===== lib/prisma.ts =====
+1 import { PrismaClient } from "@prisma/client";
+2 
+3 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+4 
+5 export const prisma =
+6   globalForPrisma.prisma ??
+7   new PrismaClient({
+8     log: ["error", "warn"],
+9   });
+10 
+11 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+===== lib/audit.ts =====
+1 import { prisma } from "@/lib/prisma";
+2 
+3 export async function logAudit(
+4   classId: string,
+5   type: string,
+6   opts?: { actorId?: string | null; metadata?: any }
+7 ) {
+8   try {
+9     await prisma.auditLog.create({
+10       data: {
+11         classId,
+12         actorId: opts?.actorId ?? null,
+13         type,
+14         metadata: opts?.metadata ?? null,
+15       },
+16     });
+17   } catch (err) {
+18     // auditoria não deve derrubar a request principal
+19     console.error("auditLog error", { classId, type, err });
+20   }
+21 }
+
+===== prisma/schema.prisma =====
+1 generator client {
+2   provider = "prisma-client-js"
+3 }
+4 
+5 datasource db {
+6   provider  = "postgresql"
+7   url       = env("DATABASE_URL")
+8   directUrl = env("DIRECT_URL")
+9 }
+10 
+11 model User {
+12   id           String   @id @default(cuid())
+13   name         String
+14   cpf          String   @unique
+15   birthDate    DateTime
+16   email        String   @unique
+17   phone        String
+18   createdAt    DateTime @default(now())
+19   passwordHash String?
+20 
+21   resetTokens   PasswordResetToken[]
+22   classes       Class[]              @relation("UserClasses")
+23   // Back-relations adicionados automaticamente
+24   classAccesses ClassAccess[]
+25   shareLinks    ShareLink[]
+26   auditLogs     AuditLog[]
+27 }
+28 
+29 model PasswordResetToken {
+30   id        String    @id @default(cuid())
+31   token     String    @unique
+32   userId    String
+33   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+34   expiresAt DateTime
+35   usedAt    DateTime?
+36   createdAt DateTime  @default(now())
+37 }
+38 
+39 model Class {
+40   id        String   @id @default(cuid())
+41   name      String
+42   ownerId   String
+43   owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+44   createdAt DateTime @default(now())
+45 
+46   attendances Attendance[]
+47   contents    Content[]
+48   students    Student[]
+49   // Back-relations adicionados automaticamente
+50   accesses    ClassAccess[]
+51   shareLinks  ShareLink[]
+52   auditLogs   AuditLog[]
+53 }
+54 
+55 model Attendance {
+56   id         String    @id @default(cuid())
+57   classId    String
+58   cls        Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+59   seq        Int
+60   title      String    @default("Chamada")
+61   createdAt  DateTime  @default(now())
+62   lessonDate DateTime? // data editável da aula (UTC, opcional)
+63 
+64   @@unique([classId, seq])
+65 }
+66 
+67 model Content {
+68   id        String   @id @default(cuid())
+69   classId   String
+70   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+71   seq       Int
+72   title     String   @default("Conteúdo")
+73   bodyHtml  String? // futuro: editor; por enquanto pode ficar vazio
+74   createdAt DateTime @default(now())
+75 
+76   @@unique([classId, seq])
+77 }
+78 
+79 model Student {
+80   id        String   @id @default(cuid())
+81   classId   String
+82   cls       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+83   name      String
+84   cpf       String?
+85   contact   String? // whatsapp/email/telefone
+86   createdAt DateTime @default(now())
+87 }
+88 
+89 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+90 
+91 /// Marcações de presença por aluno em uma chamada específica (classId+seq).
+92 model AttendancePresence {
+93   id        String   @id @default(cuid())
+94   classId   String
+95   seq       Int
+96   studentId String
+97   present   Boolean  @default(false)
+98   createdAt DateTime @default(now())
+99   updatedAt DateTime @updatedAt
+100 
+101   // Sem relações Prisma para não exigir back-relations agora.
+102   @@unique([classId, seq, studentId], name: "class_seq_student_unique")
+103   @@index([classId, seq], name: "class_seq_idx")
+104 }
+105 
+106 // ====== CONTROLE DE ACESSO / LINKS / AUDITORIA ======
+107 
+108 /// Papéis por turma:
+109 /// - PROFESSOR: único por turma (garantido por índice único parcial na migração)
+110 /// - GESTOR: ilimitado
+111 enum ClassRole {
+112   PROFESSOR
+113   GESTOR
+114 }
+115 
+116 /// Relação usuário ↔ turma com papel
+117 model ClassAccess {
+118   id        String    @id @default(cuid())
+119   classId   String
+120   userId    String
+121   role      ClassRole
+122   createdAt DateTime  @default(now())
+123 
+124   // Relations
+125   cls  Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+126   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+127 
+128   // Um usuário não pode ter dois papéis simultâneos na mesma turma
+129   @@unique([classId, userId], name: "class_user_unique")
+130   @@index([classId])
+131   @@index([userId])
+132 }
+133 
+134 /// Link compartilhável para entrar na turma com um papel
+135 model ShareLink {
+136   id            String    @id @default(cuid())
+137   classId       String
+138   token         String    @unique
+139   role          ClassRole
+140   createdBy     String
+141   isRevoked     Boolean   @default(false)
+142   isPromotional Boolean   @default(false) // criador ainda professor -> 1º claim promove criador a GESTOR e dá PROF. ao convidado
+143   usedAt        DateTime?
+144   createdAt     DateTime  @default(now())
+145 
+146   // Relations
+147   cls    Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+148   author User  @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+149 
+150   @@index([classId])
+151   @@index([createdBy])
+152 }
+153 
+154 /// Auditoria de ações sensíveis
+155 model AuditLog {
+156   id        String   @id @default(cuid())
+157   classId   String
+158   actorId   String?
+159   type      String // ex.: LINK_CREATED, LINK_CLAIMED, CLAIM_BLOCKED_PROFESSOR_EXISTS, ACCESS_REVOKED, CREATOR_PROMOTED
+160   metadata  Json?
+161   createdAt DateTime @default(now())
+162 
+163   cls   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+164   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+165 
+166   @@index([classId, createdAt])
+167   @@index([actorId])
+168 }
+
+===== prisma/migrations/20251014100422_add_access_links_auditlog/migration.sql =====
+1 -- CreateEnum
+2 CREATE TYPE "ClassRole" AS ENUM ('PROFESSOR', 'GESTOR');
+3 
+4 -- CreateTable
+5 CREATE TABLE "ClassAccess" (
+6     "id" TEXT NOT NULL,
+7     "classId" TEXT NOT NULL,
+8     "userId" TEXT NOT NULL,
+9     "role" "ClassRole" NOT NULL,
+10     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+11 
+12     CONSTRAINT "ClassAccess_pkey" PRIMARY KEY ("id")
+13 );
+14 
+15 -- CreateTable
+16 CREATE TABLE "ShareLink" (
+17     "id" TEXT NOT NULL,
+18     "classId" TEXT NOT NULL,
+19     "token" TEXT NOT NULL,
+20     "role" "ClassRole" NOT NULL,
+21     "createdBy" TEXT NOT NULL,
+22     "isRevoked" BOOLEAN NOT NULL DEFAULT false,
+23     "isPromotional" BOOLEAN NOT NULL DEFAULT false,
+24     "usedAt" TIMESTAMP(3),
+25     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+26 
+27     CONSTRAINT "ShareLink_pkey" PRIMARY KEY ("id")
+28 );
+29 
+30 -- CreateTable
+31 CREATE TABLE "AuditLog" (
+32     "id" TEXT NOT NULL,
+33     "classId" TEXT NOT NULL,
+34     "actorId" TEXT,
+35     "type" TEXT NOT NULL,
+36     "metadata" JSONB,
+37     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+38 
+39     CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
+40 );
+41 
+42 -- CreateIndex
+43 CREATE INDEX "ClassAccess_classId_idx" ON "ClassAccess"("classId");
+44 
+45 -- CreateIndex
+46 CREATE INDEX "ClassAccess_userId_idx" ON "ClassAccess"("userId");
+47 
+48 -- CreateIndex
+49 CREATE UNIQUE INDEX "ClassAccess_classId_userId_key" ON "ClassAccess"("classId", "userId");
+50 
+51 -- CreateIndex
+52 CREATE UNIQUE INDEX "ShareLink_token_key" ON "ShareLink"("token");
+53 
+54 -- CreateIndex
+55 CREATE INDEX "ShareLink_classId_idx" ON "ShareLink"("classId");
+56 
+57 -- CreateIndex
+58 CREATE INDEX "ShareLink_createdBy_idx" ON "ShareLink"("createdBy");
+59 
+60 -- CreateIndex
+61 CREATE INDEX "AuditLog_classId_createdAt_idx" ON "AuditLog"("classId", "createdAt");
+62 
+63 -- CreateIndex
+64 CREATE INDEX "AuditLog_actorId_idx" ON "AuditLog"("actorId");
+65 
+66 -- AddForeignKey
+67 ALTER TABLE "ClassAccess" ADD CONSTRAINT "ClassAccess_classId_fkey" FOREIGN KEY ("classId") REFERENCES "Class"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+68 
+69 -- AddForeignKey
+70 ALTER TABLE "ClassAccess" ADD CONSTRAINT "ClassAccess_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+71 
+72 -- AddForeignKey
+73 ALTER TABLE "ShareLink" ADD CONSTRAINT "ShareLink_classId_fkey" FOREIGN KEY ("classId") REFERENCES "Class"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+74 
+75 -- AddForeignKey
+76 ALTER TABLE "ShareLink" ADD CONSTRAINT "ShareLink_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+77 
+78 -- AddForeignKey
+79 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_classId_fkey" FOREIGN KEY ("classId") REFERENCES "Class"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+80 
+81 -- AddForeignKey
+82 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+83 
+84 -- Garante apenas 1 PROFESSOR por turma (índice único parcial em Postgres)
+85 CREATE UNIQUE INDEX IF NOT EXISTS "classaccess_one_professor_per_class"
+86 ON "ClassAccess" ("classId")
+87 WHERE role = 'PROFESSOR';
+
+===== components/ShareClassModal.tsx =====
+1 "use client";
+2 import { useState, useEffect } from "react";
+3 
+4 type LinkRow = {
+5   id: string;
+6   token: string;
+7   role: "PROFESSOR" | "GESTOR";
+8   createdAt: string;
+9   createdBy: string;
+10 };
+11 
+12 export default function ShareClassModal({ classId }: { classId: string }) {
+13   const [open, setOpen] = useState(false);
+14   const [loading, setLoading] = useState(false);
+15   const [links, setLinks] = useState<LinkRow[]>([]);
+16   const [msg, setMsg] = useState<string | null>(null);
+17   const [err, setErr] = useState<string | null>(null);
+18 
+19   async function loadLinks() {
+20     setLoading(true);
+21     setErr(null);
+22     try {
+23       const res = await fetch(`/api/classes/${classId}/access/links`, { cache: "no-store" });
+24       const data = await res.json();
+25       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao listar links");
+26       setLinks(data.links || []);
+27     } catch (e: any) {
+28       setErr(e.message || "Erro ao carregar links");
+29     } finally {
+30       setLoading(false);
+31     }
+32   }
+33 
+34   useEffect(() => {
+35     if (open) loadLinks();
+36     // eslint-disable-next-line react-hooks/exhaustive-deps
+37   }, [open]);
+38 
+39   async function createLink(role: "PROFESSOR" | "GESTOR") {
+40     setLoading(true);
+41     setMsg(null); setErr(null);
+42     try {
+43       const res = await fetch(`/api/classes/${classId}/access/links`, {
+44         method: "POST",
+45         headers: { "content-type": "application/json" },
+46         body: JSON.stringify({ role })
+47       });
+48       const data = await res.json();
+49       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao criar link");
+50       setMsg(role === "PROFESSOR" ? "Link de professor criado!" : "Link de gestor criado!");
+51       await loadLinks();
+52     } catch (e: any) {
+53       setErr(e.message || "Erro ao criar link");
+54     } finally {
+55       setLoading(false);
+56     }
+57   }
+58 
+59   async function copyLink(token: string) {
+60     const url = `${window.location.origin}/share/${token}`;
+61     try {
+62       await navigator.clipboard.writeText(url);
+63       setMsg("Link copiado!");
+64     } catch {
+65       setErr("Não consegui copiar — copie manualmente:");
+66     }
+67   }
+68 
+69   return (
+70     <>
+71       <button
+72         type="button"
+73         className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50"
+74         onClick={() => setOpen(true)}
+75       >
+76         Compartilhar
+77       </button>
+78 
+79       {open && (
+80         <div className="fixed inset-0 z-50">
+81           {/* backdrop */}
+82           <div
+83             className="absolute inset-0 bg-black/30"
+84             onClick={() => setOpen(false)}
+85             aria-hidden="true"
+86           />
+87           {/* modal */}
+88           <div className="absolute inset-0 flex items-center justify-center p-4">
+89             <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+90               <div className="flex items-center justify-between mb-3">
+91                 <h2 className="text-lg font-semibold">Compartilhar turma</h2>
+92                 <button
+93                   className="p-1 rounded-md hover:bg-gray-100"
+94                   onClick={() => setOpen(false)}
+95                   aria-label="Fechar"
+96                 >
+97                   ✕
+98                 </button>
+99               </div>
+100 
+101               <p className="text-sm text-gray-600 mb-3">
+102                 Crie um link para convidar alguém como <strong>Professor</strong> (único)
+103                 ou <strong>Gestor</strong> (vários).
+104               </p>
+105 
+106               <div className="flex gap-2 mb-4">
+107                 <button
+108                   disabled={loading}
+109                   onClick={() => createLink("PROFESSOR")}
+110                   className="btn-primary px-3 py-1.5 rounded-lg disabled:opacity-60"
+111                 >
+112                   + Link de Professor
+113                 </button>
+114                 <button
+115                   disabled={loading}
+116                   onClick={() => createLink("GESTOR")}
+117                   className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
+118                 >
+119                   + Link de Gestor
+120                 </button>
+121               </div>
+122 
+123               {msg && <div className="mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md p-2">{msg}</div>}
+124               {err && <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-2">{err}</div>}
+125 
+126               <div className="border rounded-md">
+127                 <div className="p-3 border-b text-sm font-medium">Links ativos</div>
+128                 <div className="max-h-64 overflow-auto divide-y">
+129                   {loading ? (
+130                     <div className="p-3 text-sm text-gray-500">Carregando…</div>
+131                   ) : links.length === 0 ? (
+132                     <div className="p-3 text-sm text-gray-500">Nenhum link criado ainda.</div>
+133                   ) : (
+134                     links.map((l) => {
+135                       const url = typeof window !== "undefined"
+136                         ? `${window.location.origin}/share/${l.token}`
+137                         : `/share/${l.token}`;
+138                       return (
+139                         <div key={l.id} className="p-3 flex items-center justify-between gap-3">
+140                           <div className="min-w-0">
+141                             <div className="text-sm font-medium">{l.role}</div>
+142                             <div className="text-xs text-gray-500 truncate">{url}</div>
+143                           </div>
+144                           <div className="flex items-center gap-2 shrink-0">
+145                             <button
+146                               className="px-2 py-1 rounded-md border border-gray-300 hover:bg-gray-50 text-sm"
+147                               onClick={() => copyLink(l.token)}
+148                             >
+149                               Copiar
+150                             </button>
+151                           </div>
+152                         </div>
+153                       );
+154                     })
+155                   )}
+156                 </div>
+157               </div>
+158 
+159               <div className="mt-4 text-right">
+160                 <button
+161                   className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50"
+162                   onClick={() => setOpen(false)}
+163                 >
+164                   Fechar
+165                 </button>
+166               </div>
+167             </div>
+168           </div>
+169         </div>
+170       )}
+171     </>
+172   );
+173 }
+
+===== app/(app)/dashboard/ClassCard.tsx =====
+1 "use client";
+2 import ShareClassModal from "@/components/ShareClassModal";
+3 
+4 export default function ClassCard({ cls }: { cls: { id: string; name: string } }) {
+5   return (
+6     <div className="border rounded-xl p-4 flex justify-between items-center">
+7       <div>
+8         <h3 className="font-semibold">{cls.name}</h3>
+9       </div>
+10       <div className="flex gap-2">
+11         <ShareClassModal classId={cls.id} />
+12       </div>
+13     </div>
+14   );
+15 }
+
+===== app/classes/[id]/page.tsx =====
+1 import Link from "next/link";
+2 import { notFound } from "next/navigation";
+3 import { prisma } from "@/lib/prisma";
+4 import ReportButton from "./ReportButton"; // ✅ único import novo
+5 
+6 export const dynamic = "force-dynamic";
+7 
+8 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+9   const { id } = await params;
+10 
+11   const cls = await prisma.class.findFirst({
+12     where: { id },
+13     select: { id: true, name: true }
+14   });
+15   if (!cls) return notFound();
+16 
+17   return (
+18     <main className="min-h-screen">
+19       {/* Cabeçalho */}
+20       <section className="bg-gradient-to-br from-[#0A66FF]/90 to-[#0A66FF] text-white">
+21         <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between gap-3">
+22           <Link
+23             href={`/dashboard`}
+24             className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/60"
+25           >
+26             Voltar
+27           </Link>
+28 
+29           <div className="text-right">
+30             <h1 className="text-xl font-semibold">
+31               Turma — <span className="opacity-95">{cls.name}</span>
+32             </h1>
+33             <p className="mt-1 text-sm opacity-90">Gerencie a turma acessando Chamadas e Conteúdos.</p>
+34           </div>
+35         </div>
+36       </section>
+37 
+38       {/* Corpo */}
+39       <section className="max-w-5xl mx-auto px-6 py-8">
+40         <div className="rounded-2xl border bg-white p-6 shadow-sm">
+41           <h2 className="text-lg font-semibold mb-2 text-gray-900">Ações</h2>
+42           <p className="text-gray-600 mb-4">Use os atalhos abaixo para gerenciar a turma.</p>
+43 
+44           {/* ===== Stack vertical centralizada ===== */}
+45           <div className="actions-stack flex flex-col items-stretch gap-3">
+46             <Link
+47               href={`/classes/${cls.id}/chamadas`}
+48               className="bg-[#0A66FF] text-white shadow hover:opacity-90"
+49             >
+50               Ir para Chamadas
+51             </Link>
+52 
+53             <Link
+54               href={`/classes/${cls.id}/conteudos`}
+55               className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+56             >
+57               Ir para Conteúdos
+58             </Link>
+59 
+60             {/* 🔹 Os botões internos do ReportButton também ficam 100% via .actions-stack */}
+61             <div className="w-full">
+62               <ReportButton classId={cls.id} className={cls.name} />
+63             </div>
+64 
+65             <Link
+66               href={`/classes/${cls.id}/ai-help`}
+67               className="border font-medium text-gray-800 hover:border-blue-400 hover:text-blue-700"
+68             >
+69               Ajuda com IA
+70             </Link>
+71           </div>
+72         </div>
+73       </section>
+74     </main>
+75   );
+76 }
+
+===== next.config.js =====
+1 import withPWA from "next-pwa";
+2 
+3 const isProd = process.env.NODE_ENV === "production";
+4 
+5 const runtimeCaching = [
+6   { urlPattern: ({ request }) => request.mode === "navigate",
+7     handler: "NetworkFirst",
+8     options: { cacheName: "pages", expiration: { maxEntries: 50, maxAgeSeconds: 7*24*3600 } } },
+9   { urlPattern: /_next\/static\/.*/i,
+10     handler: "StaleWhileRevalidate",
+11     options: { cacheName: "next-static" } },
+12   { urlPattern: /\/icons\/.*\.png$/i,
+13     handler: "CacheFirst",
+14     options: { cacheName: "icons", expiration: { maxEntries: 16 } } },
+15   { urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
+16     handler: "StaleWhileRevalidate",
+17     options: { cacheName: "images" } },
+18   { urlPattern: /\/api\/.*/i,
+19     handler: "NetworkFirst",
+20     options: { cacheName: "api", networkTimeoutSeconds: 3 } }
+21 ];
+22 
+23 // ⬇️ eslint deve ficar aqui (fora do withPWA)
+24 const baseConfig = {
+25   reactStrictMode: true,
+26   eslint: { ignoreDuringBuilds: true }
+27 };
+28 
+29 export default withPWA({
+30   dest: "public",
+31   disable: !isProd,
+32   register: true,
+33   skipWaiting: true,
+34   runtimeCaching,
+35   fallbacks: { document: "/offline.html" }
+36 })(baseConfig);
+
+===== next.config.mjs =====
+1 // next.config.mjs — PWA habilitado em produção
+2 import withPWA from 'next-pwa';
+3 
+4 const isDev = process.env.NODE_ENV !== 'production';
+5 
+6 export default withPWA({
+7   dest: 'public',
+8   register: true,
+9   skipWaiting: true,
+10   disable: isDev,
+11   fallbacks: { document: '/offline' },
+12   // Ajustes finos de cache (opcional)
+13   runtimeCaching: [
+14     {
+15       urlPattern: ({ request }) => request.destination === 'image',
+16       handler: 'CacheFirst',
+17       options: { cacheName: 'images', expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 } }
+18     },
+19     {
+20       urlPattern: ({ request }) => ['style','script','font'].includes(request.destination),
+21       handler: 'StaleWhileRevalidate',
+22       options: { cacheName: 'assets' }
+23     }
+24   ]
+25 })({
+26   // Outras opções do projeto (se precisar)
+27 });
+
+===== next.config.ts =====
+1 import type { NextConfig } from "next";
+2 
+3 const nextConfig: NextConfig = {
+4   /* config options here */
+5 };
+6 
+7 export default nextConfig;
+
+===== ENV VARS (detected) =====
+APP_BASE_URL
+EMAIL_PROVIDER_ENABLED
+MAIL_FROM
+NEXT_PUBLIC_BASE_URL
+NODE_ENV
+OPENAI_API_KEY
+RESEND_API_KEY
