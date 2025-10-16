@@ -6,11 +6,18 @@ import ShareClassModal from "@/components/ShareClassModal";
 
 type Role = "PROFESSOR" | "GESTOR" | null;
 
-export default function ClassCard({ cls }: { cls: { id: string; name: string; role?: Role } }) {
+export default function ClassCard({
+  cls,
+  onDeleted,
+}: {
+  cls: { id: string; name: string; role?: Role };
+  onDeleted?: (id: string) => void;
+}) {
   const item = cls;
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -24,14 +31,23 @@ export default function ClassCard({ cls }: { cls: { id: string; name: string; ro
 
   async function handleDelete() {
     if (!confirm(`Excluir a turma "${item.name}"? Esta ação não pode ser desfeita.`)) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      router.refresh();
+
+      // remoção otimista: avisa o pai para tirar da lista
+      if (onDeleted) {
+        onDeleted(item.id);
+      } else {
+        // fallback caso o card seja usado isolado em outra tela
+        router.refresh();
+      }
     } catch (e: any) {
       alert(e?.message || "Falha ao excluir turma");
     } finally {
+      setDeleting(false);
       setMenuOpen(false);
     }
   }
@@ -79,12 +95,12 @@ export default function ClassCard({ cls }: { cls: { id: string; name: string; ro
             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
               Compartilhar
             </button>
-            {/* agora visível para PROFESSOR e GESTOR */}
             <button
-              className="w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+              className="w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
               onClick={handleDelete}
+              disabled={deleting}
             >
-              Excluir turma
+              {deleting ? "Excluindo..." : "Excluir turma"}
             </button>
           </div>
         )}
