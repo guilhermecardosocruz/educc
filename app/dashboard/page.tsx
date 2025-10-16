@@ -105,17 +105,12 @@ export default function DashboardPage() {
       <header className="flex items-center justify-between max-w-5xl mx-auto mb-8">
         <div className="flex items-center gap-3">
           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
-          <h1 className="text-2xl font-semibold">EDUCC • Dashboard</h1>
+          <h1 className="text-2xl font-semibold">Olá {firstName}</h1>
         </div>
         <button onClick={onLogout} className="btn-primary">Sair</button>
       </header>
 
       <section className="max-w-5xl mx-auto">
-        <div className="card p-6 mb-8">
-          <h2 className="text-xl font-semibold">{firstName}, bem-vindo(a)!</h2>
-          <p className="text-gray-600">Gerencie suas turmas e grupos abaixo.</p>
-        </div>
-
         {/* Criar turma */}
         <div className="card p-6 mb-6">
           <h3 className="font-semibold mb-3">Criar nova turma</h3>
