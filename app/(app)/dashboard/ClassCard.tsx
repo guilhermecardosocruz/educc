@@ -3,8 +3,10 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import ShareClassModal from "@/components/ShareClassModal";
 
-export default function ClassCard({ cls }: { id?: string; name?: string } & { cls?: { id: string; name: string } }) {
-  const item = cls ?? ({ id: (arguments as any)[0].id, name: (arguments as any)[0].name }); // compat com props antigas
+type Role = "PROFESSOR" | "GESTOR" | null;
+
+export default function ClassCard({ cls }: { cls: { id: string; name: string; role?: Role } }) {
+  const item = cls;
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -18,10 +20,27 @@ export default function ClassCard({ cls }: { id?: string; name?: string } & { cl
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
 
+  const badge =
+    item.role ? (
+      <span
+        className={`ml-2 inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+          item.role === "PROFESSOR"
+            ? "bg-blue-100 text-blue-700 border border-blue-200"
+            : "bg-emerald-100 text-emerald-700 border border-emerald-200"
+        }`}
+        title={`Seu papel nesta turma: ${item.role}`}
+      >
+        {item.role}
+      </span>
+    ) : null;
+
   return (
     <div className="relative">
       <Link href={`/classes/${item.id}`} className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition">
-        <h3 className="font-semibold truncate">{item.name}</h3>
+        <h3 className="font-semibold truncate">
+          {item.name}
+          {badge}
+        </h3>
         <p className="text-sm text-gray-500">Clique para abrir</p>
       </Link>
 
@@ -30,7 +49,7 @@ export default function ClassCard({ cls }: { id?: string; name?: string } & { cl
           type="button"
           className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
           aria-label="Mais ações"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen((v) => !v); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(v => !v); }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="12" cy="5" r="1.8" />
@@ -48,6 +67,7 @@ export default function ClassCard({ cls }: { id?: string; name?: string } & { cl
         )}
       </div>
 
+      {/* @ts-ignore */}
       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
     </div>
   );
