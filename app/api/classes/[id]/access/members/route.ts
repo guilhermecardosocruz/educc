@@ -53,16 +53,62 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok:false, error:"Usuário não encontrado" }, { status: 404 });
   }
 
+  // Fluxo especial: convidar PROFESSOR promove o criador a GESTOR
   if (role === "PROFESSOR") {
-    const existingProf = await prisma.classAccess.findFirst({
-      where: { classId: id, role: "PROFESSOR" },
-      select: { id:true, userId:true }
-    });
-    if (existingProf && existingProf.userId !== target.id) {
-      return NextResponse.json({ ok:false, error:"Já existe um professor nesta turma." }, { status: 409 });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // Prof atual (se houver)
+        const existingProf = await tx.classAccess.findFirst({
+          where: { classId: id, role: "PROFESSOR" },
+          select: { id:true, userId:true }
+        });
+
+        // Se já existe professor e não é o próprio criador nem o convidado -> bloquear
+        if (existingProf && existingProf.userId !== me.id && existingProf.userId !== target.id) {
+          return { blocked: true, reason: "Já existe um professor nesta turma." } as const;
+        }
+
+        // Promove o criador para GESTOR (se ainda não for)
+        if (!existingProf || existingProf.userId === me.id) {
+          await tx.classAccess.upsert({
+            where: { class_user_unique: { classId: id, userId: me.id } },
+            update: { role: "GESTOR" },
+            create: { classId: id, userId: me.id, role: "GESTOR" },
+          });
+        }
+
+        // Atribui PROFESSOR ao convidado
+        await tx.classAccess.upsert({
+          where: { class_user_unique: { classId: id, userId: target.id } },
+          update: { role: "PROFESSOR" },
+          create: { classId: id, userId: target.id, role: "PROFESSOR" },
+        });
+
+        // Auditoria
+        await tx.auditLog.create({
+          data: {
+            classId: id,
+            actorId: me.id,
+            type: "ACCESS_GRANTED_EMAIL_PROMOTIONAL",
+            metadata: { targetEmail: email, targetUserId: target.id, role: "PROFESSOR", creatorPromotedTo: "GESTOR" }
+          }
+        });
+
+        return { blocked: false } as const;
+      });
+
+      if (result.blocked) {
+        return NextResponse.json({ ok:false, error: result.reason }, { status: 409 });
+      }
+
+      return NextResponse.json({ ok:true, access: { userId: target.id, role: "PROFESSOR" } });
+    } catch (e) {
+      console.error("invite professor error:", e);
+      return NextResponse.json({ ok:false, error:"Falha ao convidar professor" }, { status: 500 });
     }
   }
 
+  // Fluxo normal: convidar GESTOR
   const access = await prisma.classAccess.upsert({
     where: { class_user_unique: { classId: id, userId: target.id } },
     update: { role: role as any },

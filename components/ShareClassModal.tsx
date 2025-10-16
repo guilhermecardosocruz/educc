@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 
-type LinkRow = { id: string; token: string; role: "PROFESSOR" | "GESTOR"; createdAt: string; createdBy: string; };
+type LinkRow = { id: string; token: string; role: "PROFESSOR" | "GESTOR"; createdAt: string; createdBy: string; isPromotional?: boolean };
 type Props = { classId: string; open?: boolean; onOpenChange?: (v: boolean) => void; };
 
 export default function ShareClassModal({ classId, open: openProp, onOpenChange }: Props) {
@@ -32,12 +32,18 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
   async function createLink(role: "PROFESSOR" | "GESTOR") {
     setLoading(true); setMsg(null); setErr(null);
     try {
+      let body: any = { role };
+      if (role === "PROFESSOR") {
+        const ok = confirm("Ao enviar um link de PROFESSOR, você se tornará GESTOR quando o convidado aceitar. Deseja continuar?");
+        if (!ok) { setLoading(false); return; }
+        body.promotional = true; // ativa promoção automática (criador -> GESTOR, convidado -> PROFESSOR)
+      }
       const res = await fetch(`/api/classes/${classId}/access/links`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role })
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao criar link");
-      setMsg(role === "PROFESSOR" ? "Link de professor criado!" : "Link de gestor criado!");
+      setMsg(role === "PROFESSOR" ? "Link de professor (promocional) criado!" : "Link de gestor criado!");
       await loadLinks();
     } catch (e: any) { setErr(e.message || "Erro ao criar link"); }
     finally { setLoading(false); }
@@ -52,12 +58,20 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
   async function inviteByEmail() {
     setLoading(true); setMsg(null); setErr(null);
     try {
+      if (inviteRole === "PROFESSOR") {
+        const ok = confirm("Ao convidar um PROFESSOR por e-mail, você se tornará GESTOR automaticamente. Deseja continuar?");
+        if (!ok) { setLoading(false); return; }
+      }
       const res = await fetch(`/api/classes/${classId}/access/members`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, role: inviteRole })
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, role: inviteRole })
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Falha ao convidar");
-      setMsg(`Acesso concedido a ${email} como ${inviteRole}.`); setEmail("");
+      setMsg(`Acesso concedido a ${email} como ${inviteRole}.`);
+      setEmail("");
+      await loadLinks();
     } catch (e: any) { setErr(e.message || "Erro ao convidar"); }
     finally { setLoading(false); }
   }
@@ -91,6 +105,24 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
               <p className="text-sm text-gray-600 mb-3">Convide como <strong>Professor</strong> (único) ou <strong>Gestor</strong> (vários).</p>
 
               <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 text-sm"
+                    onClick={() => createLink("GESTOR")}
+                    disabled={loading}
+                  >
+                    Criar link de Gestor
+                  </button>
+                  <button
+                    className="px-3 py-1.5 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-700 text-sm disabled:opacity-60"
+                    onClick={() => createLink("PROFESSOR")}
+                    disabled={loading}
+                    title="Cria link promocional: você vira Gestor quando o convidado aceitar"
+                  >
+                    Criar link de Professor (promocional)
+                  </button>
+                </div>
+
                 <div>
                   <div className="text-sm font-medium mb-2">Convidar por e-mail (usuário já cadastrado)</div>
                   <div className="flex gap-2">
@@ -116,7 +148,9 @@ export default function ShareClassModal({ classId, open: openProp, onOpenChange 
                         return (
                           <div key={l.id} className="p-3 flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="text-sm font-medium">{l.role}</div>
+                              <div className="text-sm font-medium">
+                                {l.role} {l.isPromotional ? <span className="ml-1 inline-block rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 text-[11px]">promocional</span> : null}
+                              </div>
                               <div className="text-xs text-gray-500 truncate">{url}</div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
