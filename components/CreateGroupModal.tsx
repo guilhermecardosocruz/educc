@@ -47,7 +47,7 @@ export default function CreateGroupModal({ open, onOpenChange, classes, onCreate
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Criar grupo</h2>
+            <h2 className="text-lg font-semibold">Criar grupo de turma</h2>
             <button className="p-1 rounded-md hover:bg-gray-100" onClick={() => onOpenChange(false)} aria-label="Fechar">✕</button>
           </div>
 
@@ -90,7 +90,7 @@ export default function CreateGroupModal({ open, onOpenChange, classes, onCreate
               onClick={handleCreate}
               disabled={loading || name.trim().length < 2}
             >
-              {loading ? "Salvando..." : "Criar grupo"}
+              {loading ? "Salvando..." : "Criar grupo de turma"}
             </button>
           </div>
         </div>
