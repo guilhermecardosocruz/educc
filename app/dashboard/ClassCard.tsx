@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import ShareClassModal from "@/components/ShareClassModal";
 
 type Role = "PROFESSOR" | "GESTOR" | null;
@@ -8,8 +9,10 @@ type ClassLite = { id: string; name: string; roleForMe?: Role };
 
 export default function ClassCard({ cls }: { cls: ClassLite }) {
   const item = cls;
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -20,6 +23,29 @@ export default function ClassCard({ cls }: { cls: ClassLite }) {
     if (menuOpen) document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
+
+  async function onDelete() {
+    if (deleting) return;
+    if (!confirm("Tem certeza que deseja excluir esta turma? Esta ação não pode ser desfeita.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        alert(data?.error || "Falha ao excluir turma");
+        return;
+      }
+      setMenuOpen(false);
+      // Como a página é client, garantir atualização total:
+      window.location.reload();
+      // Alternativa em app router: router.refresh();
+    } catch (e) {
+      alert("Erro ao excluir turma");
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const badge =
     item.roleForMe ? (
@@ -33,6 +59,8 @@ export default function ClassCard({ cls }: { cls: ClassLite }) {
         {item.roleForMe === "PROFESSOR" ? "Professor" : "Gestor"}
       </span>
     ) : null;
+
+  const canDelete = item.roleForMe === "PROFESSOR" || item.roleForMe === "GESTOR";
 
   return (
     <div className="relative">
@@ -62,6 +90,15 @@ export default function ClassCard({ cls }: { cls: ClassLite }) {
             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
               Compartilhar
             </button>
+            {canDelete && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-red-600"
+                onClick={onDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Excluindo..." : "Excluir turma"}
+              </button>
+            )}
           </div>
         )}
       </div>
