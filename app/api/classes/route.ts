@@ -6,7 +6,7 @@ export async function GET() {
   const user = await requireUser();
   if (!user) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const classes = await prisma.class.findMany({
+  const rows = await prisma.class.findMany({
     where: {
       OR: [
         { ownerId: user.id },
@@ -14,7 +14,22 @@ export async function GET() {
       ]
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, createdAt: true }
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      ownerId: true,
+      accesses: {
+        where: { userId: user.id },
+        select: { role: true }
+      }
+    }
+  });
+
+  const classes = rows.map(r => {
+    const roleFromAccess = r.accesses[0]?.role ?? null;
+    const roleForMe = roleFromAccess ?? (r.ownerId === user.id ? "PROFESSOR" : null);
+    return { id: r.id, name: r.name, createdAt: r.createdAt, roleForMe };
   });
 
   return NextResponse.json({ ok:true, classes });

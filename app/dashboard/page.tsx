@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import ClassCard from "./ClassCard";
 
 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
-type ClassItem = { id: string; name: string; createdAt: string; role: "PROFESSOR" | "GESTOR" | null };
+type Role = "PROFESSOR" | "GESTOR" | null;
+type ClassItem = { id: string; name: string; createdAt: string; roleForMe: Role };
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -16,16 +17,22 @@ export default function DashboardPage() {
 
   async function fetchMe() {
     const res = await fetch("/api/auth/me", { cache: "no-store" });
-    if (res.status === 401) { router.push("/login"); return; }
+    if (res.status === 401) {
+      router.push("/login");
+      return;
+    }
     const data: Me = await res.json();
     setMe(data);
   }
 
   async function fetchClasses() {
     const res = await fetch("/api/classes", { cache: "no-store" });
-    if (res.status === 401) { router.push("/login"); return; }
+    if (res.status === 401) {
+      router.push("/login");
+      return;
+    }
     const data = await res.json();
-    if (data?.ok) setClasses((data.classes || []) as ClassItem[]);
+    if (data?.ok) setClasses(data.classes || []);
   }
 
   useEffect(() => {
@@ -46,14 +53,20 @@ export default function DashboardPage() {
     e.preventDefault();
     setErr(null);
     const n = name.trim();
-    if (n.length < 2) { setErr("Nome da turma muito curto."); return; }
+    if (n.length < 2) {
+      setErr("Nome da turma muito curto.");
+      return;
+    }
     const res = await fetch("/api/classes", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: n })
     });
     const data = await res.json();
-    if (!res.ok || !data?.ok) { setErr(data?.error ?? "Erro ao criar turma"); return; }
+    if (!res.ok || !data?.ok) {
+      setErr(data?.error ?? "Erro ao criar turma");
+      return;
+    }
     setName("");
     await fetchClasses();
   }
