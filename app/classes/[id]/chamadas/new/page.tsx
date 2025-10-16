@@ -39,6 +39,7 @@ export default function NewCallPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
+  // 1) Carrega alunos iniciais e marca todos como presentes
   useEffect(() => {
     (async () => {
       if (!id) return;
@@ -49,6 +50,41 @@ export default function NewCallPage() {
         const initial: Record<string, boolean> = {};
         for (const s of data.students) initial[s.id] = true;
         setPresence(initial);
+      }
+    })();
+  }, [id]);
+
+  // 2) Pré-preencher o "Nome da aula" com o título do conteúdo do próximo seq
+  //    - Busca a última chamada (order=desc) para obter nextSeq
+  //    - Busca a lista de conteúdos e pega o title onde seq === nextSeq
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!id) return;
+
+        // Última chamada para calcular nextSeq
+        const resCalls = await fetch(`/api/classes/${id}/chamadas?order=desc`, { cache: "no-store" });
+        let lastSeq = 0;
+        if (resCalls.ok) {
+          const payload = await resCalls.json().catch(() => ({}));
+          const first = Array.isArray(payload?.attendances) ? payload.attendances[0] : null;
+          lastSeq = Number(first?.seq || 0);
+        }
+        const nextSeq = lastSeq + 1;
+
+        // Lista de conteúdos (já vem ordenada asc)
+        const resContents = await fetch(`/api/classes/${id}/conteudos`, { cache: "no-store" });
+        if (!resContents.ok) return;
+        const contents = await resContents.json().then((d) => d?.list ?? []).catch(() => []);
+        if (!Array.isArray(contents)) return;
+
+        const match = contents.find((c: any) => Number(c?.seq) === nextSeq);
+        if (match && typeof match.title === "string" && match.title.trim().length > 0) {
+          // Só pré-preenche se o usuário ainda não digitou nada
+          setTitle((prev) => (prev?.trim()?.length ? prev : match.title));
+        }
+      } catch {
+        // Silencia falhas de prefill: não deve travar a criação
       }
     })();
   }, [id]);
@@ -187,6 +223,13 @@ export default function NewCallPage() {
   // Criar chamada + presenças
   async function handleCreate() {
     if (!id) return;
+
+    // Se título estiver vazio, confirmar com o professor (mantendo comportamento do backend)
+    if (!title.trim()) {
+      const ok = confirm("O nome da aula está vazio.\nDeseja continuar mesmo assim? O sistema poderá salvar como \"Chamada\".");
+      if (!ok) return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch(`/api/classes/${id}/chamadas`, {
@@ -481,7 +524,22 @@ export default function NewCallPage() {
               </button>
               <button
                 type="button"
-                onClick={handleEditDelete}
+                onClick={async () => {
+                  if (!id || !editId) return;
+                  if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+                  try {
+                    const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+                    setStudents(prev => prev.filter(s => s.id !== editId));
+                    setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+                    setEditId(null);
+                    setEditName("");
+                  } catch (e: any) {
+                    alert("Erro ao excluir aluno");
+                    console.error(e);
+                  }
+                }}
                 className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
               >
                 Excluir aluno
