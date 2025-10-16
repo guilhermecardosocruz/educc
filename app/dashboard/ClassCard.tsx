@@ -6,6 +6,7 @@ import LinkToGroupModal from "@/components/LinkToGroupModal";
 
 type Role = "PROFESSOR" | "GESTOR" | null;
 type ClassLite = { id: string; name: string; roleForMe?: Role };
+
 export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filterGroupId?: string | null }) {
   const item = cls;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -47,11 +48,14 @@ export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filt
   }
 
   return (
-    <div className="relative">
-      <Link href={`/classes/${item.id}`} className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition">
+    <div className="relative max-w-full">
+      {/* Badge no canto superior esquerdo */}
+      {badge && <div className="absolute top-2 left-2 z-10 pointer-events-none">{badge}</div>}
+
+      <Link href={`/classes/${item.id}`} className="block w-full max-w-full overflow-hidden border rounded-xl p-4 pr-12 hover:shadow-sm transition">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold truncate">{item.name}</h3>
-          {badge}
+          {/* badge foi movido para posição absoluta */}
         </div>
       </Link>
 
