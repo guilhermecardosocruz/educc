@@ -49,11 +49,11 @@ export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filt
 
   return (
     <div className="relative w-full max-w-full overflow-hidden">
-      {badge && <div className="absolute top-2 left-2 z-10 pointer-events-none">{badge}</div>}
+      {badge && <div className="absolute top-3 left-4 z-10 pointer-events-none">{badge}</div>}
 
       <Link
         href={`/classes/${item.id}`}
-        className="block w-full max-w-full overflow-hidden border rounded-xl p-4 pl-12 pr-10 hover:shadow-sm transition"
+        className="block w-full max-w-full overflow-hidden border rounded-xl p-4 pl-20 min-h-12 pr-10 hover:shadow-sm transition"
       >
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold truncate">{item.name}</h3>
