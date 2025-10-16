@@ -1,12 +1,14 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import ShareClassModal from "@/components/ShareClassModal";
 
 type Role = "PROFESSOR" | "GESTOR" | null;
 
 export default function ClassCard({ cls }: { cls: { id: string; name: string; role?: Role } }) {
   const item = cls;
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -19,6 +21,20 @@ export default function ClassCard({ cls }: { cls: { id: string; name: string; ro
     if (menuOpen) document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
+
+  async function handleDelete() {
+    if (!confirm(`Excluir a turma "${item.name}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      router.refresh(); // atualiza lista
+    } catch (e: any) {
+      alert(e?.message || "Falha ao excluir turma");
+    } finally {
+      setMenuOpen(false);
+    }
+  }
 
   const badge =
     item.role ? (
@@ -59,15 +75,23 @@ export default function ClassCard({ cls }: { cls: { id: string; name: string; ro
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
+          <div className="absolute right-0 mt-2 w-48 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
               Compartilhar
             </button>
+            {item.role === "PROFESSOR" && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                onClick={handleDelete}
+              >
+                Excluir turma
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* @ts-ignore - o componente aceita open/onOpenChange */}
+      {/* @ts-ignore */}
       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
     </div>
   );

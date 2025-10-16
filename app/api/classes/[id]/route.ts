@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, getRole } from "@/lib/session";
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+// (mantém espaço para futuros GET/PUT se precisar)
+
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ ok:false }, { status: 401 });
+  const me = await requireUser();
+  if (!me) return NextResponse.json({ ok:false }, { status: 401 });
 
-  const cls = await prisma.class.findFirst({
-    where: { id },
-    select: { id: true, name: true }
-  });
-  if (!cls) return NextResponse.json({ ok:false }, { status: 404 });
+  const role = await getRole(me.id, id);
+  if (!role) return NextResponse.json({ ok:false, error:"Sem acesso" }, { status: 403 });
+  if (role !== "PROFESSOR") {
+    return NextResponse.json({ ok:false, error:"Apenas professor pode excluir a turma" }, { status: 403 });
+  }
 
-  return NextResponse.json({ ok:true, class: cls });
+  await prisma.class.delete({ where: { id } });
+  return NextResponse.json({ ok:true, deletedId: id });
 }
