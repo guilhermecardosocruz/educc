@@ -1,18 +1,16 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import ShareClassModal from "@/components/ShareClassModal";
+import LinkToGroupModal from "@/components/LinkToGroupModal";
 
 type Role = "PROFESSOR" | "GESTOR" | null;
 type ClassLite = { id: string; name: string; roleForMe?: Role };
-
-export default function ClassCard({ cls }: { cls: ClassLite }) {
+export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filterGroupId?: string | null }) {
   const item = cls;
-  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -23,27 +21,6 @@ export default function ClassCard({ cls }: { cls: ClassLite }) {
     if (menuOpen) document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
-
-  async function onDelete() {
-    if (deleting) return;
-    if (!confirm("Tem certeza que deseja excluir esta turma? Esta ação não pode ser desfeita.")) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.ok === false) {
-        alert(data?.error || "Falha ao excluir turma");
-        return;
-      }
-      setMenuOpen(false);
-      window.location.reload();
-    } catch (e) {
-      alert("Erro ao excluir turma");
-      console.error(e);
-    } finally {
-      setDeleting(false);
-    }
-  }
 
   const badge =
     item.roleForMe ? (
@@ -58,7 +35,16 @@ export default function ClassCard({ cls }: { cls: ClassLite }) {
       </span>
     ) : null;
 
-  const canDelete = item.roleForMe === "PROFESSOR" || item.roleForMe === "GESTOR";
+  async function onDelete() {
+    if (!confirm("Tem certeza que deseja excluir esta turma? Esta ação não pode ser desfeita.")) return;
+    const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) {
+      alert(data?.error || "Erro ao excluir turma");
+      return;
+    }
+    window.location.reload();
+  }
 
   return (
     <div className="relative">
@@ -84,24 +70,23 @@ export default function ClassCard({ cls }: { cls: ClassLite }) {
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
+          <div className="absolute right-0 mt-2 w-48 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
               Compartilhar
             </button>
-            {canDelete && (
-              <button
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-red-600"
-                onClick={onDelete}
-                disabled={deleting}
-              >
-                {deleting ? "Excluindo..." : "Excluir turma"}
-              </button>
-            )}
+            <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setLinkOpen(true); }}>
+              Vincular a grupo
+            </button>
+            <div className="my-1 border-t" />
+            <button className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setMenuOpen(false); onDelete(); }}>
+              Excluir
+            </button>
           </div>
         )}
       </div>
 
       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
+      <LinkToGroupModal classId={item.id} open={linkOpen} onOpenChange={setLinkOpen} />
     </div>
   );
 }

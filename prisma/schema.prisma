@@ -24,6 +24,7 @@ model User {
   classAccesses ClassAccess[]
   shareLinks    ShareLink[]
   auditLogs     AuditLog[]
+  groups        Group[]
 }
 
 model PasswordResetToken {
@@ -43,13 +44,14 @@ model Class {
   owner     User     @relation("UserClasses", fields: [ownerId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
-  attendances Attendance[]
-  contents    Content[]
-  students    Student[]
+  attendances      Attendance[]
+  contents         Content[]
+  students         Student[]
   // Back-relations adicionados automaticamente
-  accesses    ClassAccess[]
-  shareLinks  ShareLink[]
-  auditLogs   AuditLog[]
+  accesses         ClassAccess[]
+  shareLinks       ShareLink[]
+  auditLogs        AuditLog[]
+  groupMemberships ClassGroupMembership[]
 }
 
 model Attendance {
@@ -165,4 +167,30 @@ model AuditLog {
 
   @@index([classId, createdAt])
   @@index([actorId])
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  memberships ClassGroupMembership[]
+
+  @@index([userId, createdAt])
+}
+
+model ClassGroupMembership {
+  id        String   @id @default(cuid())
+  classId   String
+  groupId   String
+  createdAt DateTime @default(now())
+
+  cls Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  grp Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, groupId], name: "class_group_unique")
+  @@index([groupId])
+  @@index([classId])
 }
