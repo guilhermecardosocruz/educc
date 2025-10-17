@@ -56,7 +56,11 @@
 │   │   │   └── route.ts
 │   │   ├── class-groups/
 │   │   │   ├── [groupId]/
+│   │   │   │   ├── analytics/
+│   │   │   │   │   └── route.ts
 │   │   │   │   ├── classes/
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── report/
 │   │   │   │   │   └── route.ts
 │   │   │   │   └── route.ts
 │   │   │   └── route.ts
@@ -134,6 +138,8 @@
 │           └── page.tsx
 ├── backups/
 │   ├── for-gpt/
+│   │   ├── ADD_STUDENT_MODAL_DEBUG.txt
+│   │   ├── analytics-route.20251017-005537.bak
 │   │   ├── API.txt
 │   │   ├── (app)-ClassCard.tsx.20251016-111811.bak
 │   │   ├── app_page.tsx..bak
@@ -159,6 +165,10 @@
 │   │   ├── chamadas-seq-page.20251013-020251.bak
 │   │   ├── chamadas-seq-route.20251013-020251.bak
 │   │   ├── chamadas-seq-ui.20251013-020251.bak
+│   │   ├── chamadas-seq-ui.20251016-224226.bak
+│   │   ├── chamadas-seq-ui.20251016-225135.bak
+│   │   ├── chamadas-seq-ui.20251016-231442.bak
+│   │   ├── chamadas-seq-ui.20251016-231736.bak
 │   │   ├── ClassCard.tsx.20251016-111811.bak
 │   │   ├── CODE_QUALITY_CONFIG.txt
 │   │   ├── COMPONENTS_TSX.txt
@@ -170,12 +180,16 @@
 │   │   ├── DASHBOARD_DELETE_DEBUG.txt
 │   │   ├── EDIT_CORE_APP.txt
 │   │   ├── .env.local.bak
+│   │   ├── GROUP_REPORT_FILES.txt
 │   │   ├── GROUPS_KICKOFF.txt
 │   │   ├── INDEX.txt
+│   │   ├── lib-report-pdf.20251017-001951.bak
 │   │   ├── LOGIN_CARD_DEBUG.txt
 │   │   ├── LOGIN_EDIT.txt
 │   │   ├── move-date-below-title.patch
 │   │   ├── next.config.js..bak
+│   │   ├── next.config.mjs.20251017-001218.bak
+│   │   ├── next.config.mjs.20251017-001518.bak
 │   │   ├── next.config.mjs..bak
 │   │   ├── page.tsx.20251016-125414.bak
 │   │   ├── presences-route.ts.20251009-152133.bak
@@ -183,6 +197,10 @@
 │   │   ├── PROJECT_NO_SVG.txt
 │   │   ├── PROJECT_TS.txt
 │   │   ├── REDESIGN_FILES.txt
+│   │   ├── report-route.20251017-001116.bak
+│   │   ├── report-route.20251017-002005.bak
+│   │   ├── report-route.20251017-005549.bak
+│   │   ├── report-route.405fix.20251017-011426.bak
 │   │   ├── ROTAS.txt
 │   │   ├── ROUTES_ERRORS.txt
 │   │   ├── schema.prisma.20251009-145922.bak
@@ -200,9 +218,12 @@
 │   │   └── TREE.txt
 │   └── pre-fix/
 ├── components/
+│   ├── AddStudentModal.tsx
 │   ├── CreateClassModal.tsx
 │   ├── CreateGroupModal.tsx
+│   ├── DateRangePicker.tsx
 │   ├── DevSwKiller.tsx
+│   ├── GroupReportButton.tsx
 │   ├── LinkToGroupModal.tsx
 │   ├── LoginCard.tsx
 │   └── ShareClassModal.tsx
@@ -212,9 +233,13 @@
 ├── .eslintrc.cjs
 ├── .gitignore
 ├── lib/
+│   ├── analytics/
+│   │   └── attendance.ts
 │   ├── audit.ts
 │   ├── email.ts
 │   ├── prisma.ts
+│   ├── report/
+│   │   └── pdf.ts
 │   └── session.ts
 ├── middleware.ts
 ├── next.config.mjs
@@ -234,7 +259,7 @@
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
-│   ├── fallback-9LPzR3YU_w3Bg3nLW7Ntf.js
+│   ├── fallback-trd59lcs7K9Mmlk5qSbN5.js
 │   ├── file.svg
 │   ├── globe.svg
 │   ├── icons/
@@ -263,4 +288,4 @@
 ├── tsconfig.json
 └── tsconfig.tsbuildinfo
 
-71 directories, 192 files
+75 directories, 213 files

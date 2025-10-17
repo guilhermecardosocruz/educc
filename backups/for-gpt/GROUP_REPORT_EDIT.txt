@@ -1,0 +1,502 @@
+
+===== app/api/class-groups/[groupId]/report/route.ts =====
+1 export const runtime = "nodejs";
+2 export const dynamic = "force-dynamic";
+3 
+4 import { prisma } from "@/lib/prisma";
+5 import { requireUser } from "@/lib/session";
+6 import { getGroupAttendanceSummary } from "@/lib/analytics/attendance";
+7 import { buildGroupReportPDF } from "@/lib/report/pdf";
+8 
+9 export async function HEAD(_req: Request, { params }: { params: { groupId: string } }) {
+10   // HEAD “saudável” para Vercel/Next
+11   return new Response(null, { status: 204 });
+12 }
+13 
+14 export async function GET(req: Request, { params }: { params: { groupId: string } }) {
+15   try {
+16     const me = await requireUser();
+17     if (!me) {
+18       return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+19         status: 401,
+20         headers: { "content-type": "application/json" },
+21       });
+22     }
+23 
+24     const groupId = params.groupId;
+25     const url = new URL(req.url);
+26     const from = url.searchParams.get("from");
+27     const to = url.searchParams.get("to");
+28     if (!from || !to) {
+29       return new Response(JSON.stringify({ ok: false, error: "missing from/to" }), {
+30         status: 400,
+31         headers: { "content-type": "application/json" },
+32       });
+33     }
+34 
+35     // grupo do usuário (mesma regra das rotas existentes)
+36     const g = await prisma.group.findFirst({
+37       where: { id: groupId, userId: me.id },
+38       select: { id: true, name: true },
+39     });
+40     if (!g) {
+41       return new Response(JSON.stringify({ ok: false, error: "group not found" }), {
+42         status: 404,
+43         headers: { "content-type": "application/json" },
+44       });
+45     }
+46 
+47     const summaries = await getGroupAttendanceSummary(g.id, from, to);
+48     const pdf = await buildGroupReportPDF({ groupName: g.name, from, to, summaries });
+49 
+50     return new Response(pdf, {
+51       status: 200,
+52       headers: {
+53         "content-type": "application/pdf",
+54         "content-disposition": `attachment; filename="relatorio-grupo-${g.id}-${from}_a_${to}.pdf"`,
+55         "cache-control": "no-store",
+56       },
+57     });
+58   } catch (e: any) {
+59     return new Response(JSON.stringify({ ok: false, error: e?.message || "internal error" }), {
+60       status: 500,
+61       headers: { "content-type": "application/json" },
+62     });
+63   }
+64 }
+
+===== app/api/class-groups/[groupId]/analytics/route.ts =====
+1 import { NextRequest, NextResponse } from "next/server";
+2 import { prisma } from "@/lib/prisma";
+3 import { requireUser } from "@/lib/session";
+4 import { getGroupAttendanceSummary } from "@/lib/analytics/attendance";
+5 
+6 export async function GET(req: NextRequest, { params }: { params: { groupId: string } }) {
+7   try {
+8     const me = await requireUser();
+9     if (!me) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+10 
+11     const groupId = params.groupId;
+12     const { searchParams } = new URL(req.url);
+13     const from = searchParams.get("from");
+14     const to = searchParams.get("to");
+15     if (!from || !to) return NextResponse.json({ ok: false, error: "missing from/to" }, { status: 400 });
+16 
+17     // grupo precisa ser do usuário (igual às rotas existentes)
+18     const g = await prisma.group.findFirst({
+19       where: { id: groupId, userId: me.id },
+20       select: { id: true, name: true },
+21     });
+22     if (!g) return NextResponse.json({ ok: false, error: "group not found" }, { status: 404 });
+23 
+24     const summaries = await getGroupAttendanceSummary(g.id, from, to);
+25     return NextResponse.json({ ok: true, group: g, summaries });
+26   } catch (e: any) {
+27     return NextResponse.json({ ok: false, error: e?.message || "internal error" }, { status: 500 });
+28   }
+29 }
+
+===== lib/analytics/attendance.ts =====
+1 import { prisma } from "@/lib/prisma";
+2 
+3 export type ClassSummary = {
+4   classId: string;
+5   className: string;
+6   lessonsCount: number;          // nº de aulas no período
+7   avgPresentAbsolute: number;    // média de presentes (absoluto)
+8   avgPresentPercent: number;     // média de presença (%)
+9   topAbsentees: Array<{ studentId: string; name: string; absences: number }>;
+10 };
+11 
+12 /**
+13  * Busca as turmas do grupo via tabela de junção ClassGroupMembership (campo relacional 'cls'),
+14  * exatamente como já é feito nas rotas existentes.
+15  */
+16 export async function getGroupAttendanceSummary(groupId: string, from: string, to: string): Promise<ClassSummary[]> {
+17   // memberships com relação para a turma
+18   const memberships = await prisma.classGroupMembership.findMany({
+19     where: { groupId },
+20     select: { cls: { select: { id: true, name: true } } },
+21     orderBy: { createdAt: "asc" },
+22   });
+23 
+24   const classes = memberships
+25     .map((m) => m.cls)
+26     .filter((c): c is { id: string; name: string } => !!c);
+27 
+28   const summaries: ClassSummary[] = [];
+29 
+30   for (const cls of classes) {
+31     // aulas no período
+32     const attendances = await prisma.attendance.findMany({
+33       where: {
+34         classId: cls.id,
+35         lessonDate: { gte: new Date(from), lte: new Date(to) },
+36       },
+37       select: { seq: true },
+38       orderBy: { seq: "asc" },
+39     });
+40 
+41     if (attendances.length === 0) {
+42       summaries.push({
+43         classId: cls.id,
+44         className: cls.name,
+45         lessonsCount: 0,
+46         avgPresentAbsolute: 0,
+47         avgPresentPercent: 0,
+48         topAbsentees: [],
+49       });
+50       continue;
+51     }
+52 
+53     // lista atual de alunos (divisor padrão para %)
+54     const students = await prisma.student.findMany({
+55       where: { classId: cls.id },
+56       select: { id: true, name: true },
+57       orderBy: { createdAt: "asc" },
+58     });
+59     const studentMap = new Map(students.map((s) => [s.id, s.name]));
+60 
+61     let sumPresent = 0;
+62     let sumPercent = 0;
+63     const absencesCounter = new Map<string, number>();
+64 
+65     for (const att of attendances) {
+66       const presences = await prisma.attendancePresence.findMany({
+67         where: { classId: cls.id, seq: att.seq },
+68         select: { studentId: true, present: true },
+69       });
+70 
+71       const totalThisClassList = students.length > 0 ? students.length : presences.length;
+72       const presentCount = presences.reduce((acc, r) => acc + (r.present ? 1 : 0), 0);
+73 
+74       sumPresent += presentCount;
+75       sumPercent += totalThisClassList > 0 ? presentCount / totalThisClassList : 0;
+76 
+77       for (const r of presences) {
+78         if (!r.present) {
+79           absencesCounter.set(r.studentId, (absencesCounter.get(r.studentId) || 0) + 1);
+80         }
+81       }
+82     }
+83 
+84     const lessonsCount = attendances.length;
+85     const avgPresentAbsolute = lessonsCount > 0 ? sumPresent / lessonsCount : 0;
+86     const avgPresentPercent = lessonsCount > 0 ? (sumPercent / lessonsCount) * 100 : 0;
+87 
+88     const topAbsentees = Array.from(absencesCounter.entries())
+89       .map(([studentId, absences]) => ({
+90         studentId,
+91         name: studentMap.get(studentId) || "Aluno",
+92         absences,
+93       }))
+94       .sort((a, b) => b.absences - a.absences)
+95       .slice(0, 5);
+96 
+97     summaries.push({
+98       classId: cls.id,
+99       className: cls.name,
+100       lessonsCount,
+101       avgPresentAbsolute: Number(avgPresentAbsolute.toFixed(2)),
+102       avgPresentPercent: Number(avgPresentPercent.toFixed(2)),
+103       topAbsentees,
+104     });
+105   }
+106 
+107   return summaries;
+108 }
+
+===== lib/report/pdf.ts =====
+1 import { ClassSummary } from "@/lib/analytics/attendance";
+2 
+3 export async function buildGroupReportPDF({
+4   groupName,
+5   from,
+6   to,
+7   summaries,
+8 }: {
+9   groupName: string;
+10   from: string;
+11   to: string;
+12   summaries: ClassSummary[];
+13 }): Promise<Buffer> {
+14   const { default: PDFDocument } = await import("pdfkit");
+15 
+16   const doc = new PDFDocument({ margin: 50 });
+17   const chunks: Buffer[] = [];
+18 
+19   return await new Promise<Buffer>((resolve, reject) => {
+20     doc.on("data", (c: Buffer) => chunks.push(c));
+21     doc.on("end", () => resolve(Buffer.concat(chunks)));
+22     doc.on("error", (err) => reject(err));
+23 
+24     doc.fontSize(16).text(`Relatório de Presenças — Grupo: ${groupName}`, { align: "left" });
+25     doc.moveDown(0.3);
+26     doc.fontSize(10).fillColor("#555").text(`Período: ${from} a ${to}`);
+27     doc.moveDown();
+28 
+29     summaries.forEach((s, idx) => {
+30       if (idx > 0) doc.moveDown(0.5);
+31       doc.fillColor("#000").fontSize(13).text(`Turma: ${s.className}`);
+32       doc.moveDown(0.2);
+33       doc.fontSize(10).fillColor("#333")
+34         .text(`Aulas no período: ${s.lessonsCount}`)
+35         .text(`Média de presentes (abs.): ${s.avgPresentAbsolute}`)
+36         .text(`Média de presença (%): ${s.avgPresentPercent}%`);
+37       doc.moveDown(0.4);
+38       doc.fontSize(11).fillColor("#000").text("Top 5 mais faltantes:");
+39       doc.moveDown(0.2);
+40       doc.fontSize(10).fillColor("#333");
+41       if (s.topAbsentees.length === 0) {
+42         doc.text("— Sem dados de faltas no período.");
+43       } else {
+44         s.topAbsentees.forEach((st, i) => {
+45           doc.text(`${i + 1}. ${st.name} — ${st.absences} falta(s)`);
+46         });
+47       }
+48       doc.moveDown();
+49       const x = doc.x;
+50       const y = doc.y;
+51       doc.moveTo(x, y).lineTo(545, y).strokeColor("#ddd").stroke();
+52     });
+53 
+54     doc.end();
+55   });
+56 }
+
+===== components/GroupReportButton.tsx =====
+1 "use client";
+2 import { useMemo, useState } from "react";
+3 import DateRangePicker from "./DateRangePicker";
+4 
+5 export default function GroupReportButton({ groupId }: { groupId: string }) {
+6   const today = useMemo(() => {
+7     const d = new Date();
+8     const yyyy = d.getFullYear();
+9     const mm = String(d.getMonth() + 1).padStart(2, "0");
+10     const dd = String(d.getDate()).padStart(2, "0");
+11     return `${yyyy}-${mm}-${dd}`;
+12   }, []);
+13   const monthStart = useMemo(() => {
+14     const d = new Date();
+15     const yyyy = d.getFullYear();
+16     const mm = String(d.getMonth() + 1).padStart(2, "0");
+17     return `${yyyy}-${mm}-01`;
+18   }, []);
+19 
+20   const [range, setRange] = useState<{ from: string; to: string }>({ from: monthStart, to: today });
+21   const [loading, setLoading] = useState(false);
+22   const disabled = loading || !range.from || !range.to;
+23 
+24   async function handleGenerate() {
+25     if (!range.from || !range.to) return;
+26     setLoading(true);
+27     try {
+28       const qs = new URLSearchParams({ from: range.from, to: range.to }).toString();
+29       const res = await fetch(`/api/class-groups/${groupId}/report?${qs}`, {
+30         method: "GET",
+31       });
+32       if (!res.ok) {
+33         const msg = await res.text().catch(() => "Falha ao gerar PDF");
+34         throw new Error(msg || "Falha ao gerar PDF");
+35       }
+36       const blob = await res.blob();
+37       const url = URL.createObjectURL(blob);
+38       const a = document.createElement("a");
+39       a.href = url;
+40       a.download = `relatorio-grupo-${groupId}-${range.from}_a_${range.to}.pdf`;
+41       document.body.appendChild(a);
+42       a.click();
+43       a.remove();
+44       setTimeout(() => URL.revokeObjectURL(url), 1000);
+45     } catch (e: any) {
+46       alert(e?.message || "Erro ao gerar relatório");
+47       console.error(e);
+48     } finally {
+49       setLoading(false);
+50     }
+51   }
+52 
+53   return (
+54     <div className="flex flex-col gap-3">
+55       <DateRangePicker from={range.from} to={range.to} onChange={setRange} disabled={loading} />
+56       <div className="flex items-center gap-2">
+57         <button
+58           type="button"
+59           onClick={handleGenerate}
+60           disabled={disabled}
+61           className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+62         >
+63           {loading ? "Gerando PDF..." : "Gerar relatório em PDF"}
+64         </button>
+65         <span className="text-xs text-gray-600">Média de presença (abs. e %) e Top 5 faltantes por turma.</span>
+66       </div>
+67     </div>
+68   );
+69 }
+
+===== components/DateRangePicker.tsx =====
+1 "use client";
+2 import { useId } from "react";
+3 
+4 export default function DateRangePicker({
+5   from, to, onChange, disabled = false,
+6 }: {
+7   from: string;
+8   to: string;
+9   onChange: (next: { from: string; to: string }) => void;
+10   disabled?: boolean;
+11 }) {
+12   const idFrom = useId();
+13   const idTo = useId();
+14 
+15   return (
+16     <div className="flex flex-wrap items-end gap-3">
+17       <div>
+18         <label htmlFor={idFrom} className="text-xs text-gray-600">De</label>
+19         <input
+20           id={idFrom}
+21           type="date"
+22           value={from}
+23           onChange={(e) => onChange({ from: e.target.value, to })}
+24           className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+25           disabled={disabled}
+26         />
+27       </div>
+28       <div>
+29         <label htmlFor={idTo} className="text-xs text-gray-600">Até</label>
+30         <input
+31           id={idTo}
+32           type="date"
+33           value={to}
+34           onChange={(e) => onChange({ from, to: e.target.value })}
+35           className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+36           disabled={disabled}
+37         />
+38       </div>
+39     </div>
+40   );
+41 }
+
+===== app/groups/[groupId]/page.tsx =====
+1 'use client';
+2 
+3 import { useEffect, useState } from 'react';
+4 import Link from 'next/link';
+5 import { useRouter, useParams } from 'next/navigation';
+6 import GroupReportButton from '@/components/GroupReportButton';
+7 
+8 type ClassLite = { id: string; name: string };
+9 type GroupDetail = { id: string; name: string; classes: ClassLite[] };
+10 
+11 export default function GroupPage() {
+12   const router = useRouter();
+13   const params = useParams<{ groupId: string }>();
+14   const groupId = params?.groupId as string;
+15 
+16   const [loading, setLoading] = useState(true);
+17   const [err, setErr] = useState<string | null>(null);
+18   const [group, setGroup] = useState<GroupDetail | null>(null);
+19 
+20   async function load() {
+21     setLoading(true);
+22     setErr(null);
+23     try {
+24       const res = await fetch(`/api/class-groups/${groupId}`, { cache: 'no-store' });
+25       const data = await res.json().catch(() => ({}));
+26       if (!res.ok || !data?.ok) throw new Error(data?.error ?? 'Falha ao carregar grupo');
+27       const g = data.group as GroupDetail;
+28       setGroup({ id: g.id, name: g.name, classes: data.classes ?? g.classes ?? [] });
+29     } catch (e: any) {
+30       setErr(e?.message || 'Erro ao carregar');
+31     } finally {
+32       setLoading(false);
+33     }
+34   }
+35 
+36   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+37 
+38   if (loading) {
+39     return (
+40       <main className="min-h-screen flex items-center justify-center">
+41         Carregando...
+42       </main>
+43     );
+44   }
+45 
+46   if (err) {
+47     return (
+48       <main className="min-h-screen flex items-center justify-center">
+49         <div className="card p-6">
+50           <p className="text-red-600">{err}</p>
+51           <div className="mt-4">
+52             <button onClick={() => router.back()} className="btn-primary">Voltar</button>
+53           </div>
+54         </div>
+55       </main>
+56     );
+57   }
+58 
+59   if (!group) {
+60     return (
+61       <main className="min-h-screen flex items-center justify-center">
+62         <div className="card p-6">
+63           <p className="text-gray-600">Grupo não encontrado.</p>
+64           <div className="mt-4">
+65             <button onClick={() => router.back()} className="btn-primary">Voltar</button>
+66           </div>
+67         </div>
+68       </main>
+69     );
+70   }
+71 
+72   return (
+73     <main className="min-h-screen p-6 lg:p-10">
+74       <header className="flex items-center justify-between max-w-5xl mx-auto mb-6">
+75         <div className="flex items-center gap-3">
+76           <button
+77             onClick={() => router.back()}
+78             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border hover:bg-gray-50"
+79             aria-label="Voltar"
+80             title="Voltar"
+81           >
+82             ← Voltar
+83           </button>
+84           <h1 className="text-xl font-semibold">Grupo: {group.name}</h1>
+85         </div>
+86         <Link href="/dashboard" className="text-sm text-[var(--color-brand-blue)] hover:underline">
+87           Ir para Dashboard
+88         </Link>
+89       </header>
+90 
+91       <section className="max-w-5xl mx-auto space-y-6">
+92         {/* Turmas do grupo (clicáveis) */}
+93         <div className="card p-6">
+94           <h2 className="font-semibold mb-3">Turmas deste grupo</h2>
+95           {group.classes?.length ? (
+96             <div className="flex flex-wrap gap-2">
+97               {group.classes.map((c) => (
+98                 <Link
+99                   key={c.id}
+100                   href={`/classes/${c.id}`}
+101                   className="px-3 py-1.5 rounded-full border hover:bg-gray-50 text-sm"
+102                   title={`Abrir turma: ${c.name}`}
+103                 >
+104                   {c.name}
+105                 </Link>
+106               ))}
+107             </div>
+108           ) : (
+109             <p className="text-gray-600 text-sm">Nenhuma turma vinculada a este grupo.</p>
+110           )}
+111         </div>
+112 
+113         {/* Relatórios */}
+114         <div className="card p-6">
+115           <h2 className="font-semibold mb-3">Relatórios</h2>
+116           <GroupReportButton groupId={group.id} />
+117         </div>
+118       </section>
+119     </main>
+120   );
+121 }
