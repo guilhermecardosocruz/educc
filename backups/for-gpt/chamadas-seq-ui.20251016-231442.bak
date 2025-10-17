@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import AddStudentModal from "@/components/AddStudentModal";
 
 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
 
@@ -35,8 +34,12 @@ export default function EditChamadaClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Adicionar aluno (via modal)
+  // Adicionar aluno
   const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newCpf, setNewCpf] = useState("");
+  const [newContact, setNewContact] = useState("");
+  const [adding, setAdding] = useState(false);
 
   // Import planilha
   const [uploadName, setUploadName] = useState<string | null>(null);
@@ -44,7 +47,7 @@ export default function EditChamadaClient({
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // Editar aluno (modal de edição)
+  // Editar aluno (modal)
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -83,7 +86,8 @@ export default function EditChamadaClient({
 
   // Atualiza somente o nome do aluno (modal) — bloqueado em readOnly
   async function handleEditSave() {
-    if (readOnly || !editId) return;
+    if (readOnly) return;
+    if (!editId) return;
     const name = editName.trim();
     if (name.length < 2) { alert("Informe o nome (mínimo 2 caracteres)."); return; }
     try {
@@ -103,7 +107,8 @@ export default function EditChamadaClient({
     }
   }
   async function handleEditDelete() {
-    if (readOnly || !editId) return;
+    if (readOnly) return;
+    if (!editId) return;
     if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
     try {
       const res = await fetch(`/api/classes/${classId}/students/${editId}`, { method: "DELETE" });
@@ -116,6 +121,51 @@ export default function EditChamadaClient({
     } catch (e: any) {
       alert("Erro ao excluir aluno");
       console.error(e);
+    }
+  }
+
+  // ⬇️ FALTAVA ESTA FUNÇÃO
+  async function handleAddStudent() {
+    if (readOnly) return;
+    const name = newName.trim();
+    const cpf = newCpf.trim();
+    const contact = newContact.trim();
+    if (name.length < 2) {
+      alert("Informe o nome (mínimo 2 caracteres).");
+      return;
+    }
+    setAdding(true);
+    try {
+      const body: any = { name };
+      if (cpf.length) body.cpf = cpf;
+      if (contact.length) body.contact = contact;
+
+      const res = await fetch(`/api/classes/${classId}/students`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      let payload: any = null;
+      try { payload = await res.json(); } catch {}
+      if (!res.ok || !payload?.ok) {
+        let msg = "Erro ao adicionar aluno";
+        const e = payload?.error;
+        if (typeof e === "string") msg = e;
+        else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+        else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+        throw new Error(msg);
+      }
+
+      const st: Student = payload.student;
+      setStudents((prev) => [st, ...prev]);
+      setPresence((p) => ({ ...p, [st.id]: true }));
+      setNewName(""); setNewCpf(""); setNewContact("");
+      setShowAdd(false);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao adicionar aluno");
+      console.error(e);
+    } finally {
+      setAdding(false);
     }
   }
 
@@ -262,6 +312,58 @@ export default function EditChamadaClient({
         </div>
 
         <div className="space-y-5 px-5 py-5">
+          {/* Adicionar aluno */}
+          {(!readOnly && showAdd) && (
+            <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Nome</label>
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ex.: Maria Silva"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+                  <input
+                    value={newCpf}
+                    onChange={(e) => setNewCpf(e.target.value)}
+                    placeholder="Somente números"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+                  <input
+                    value={newContact}
+                    onChange={(e) => setNewContact(e.target.value)}
+                    placeholder="Ex.: (48) 99999-9999"
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddStudent}
+                  disabled={adding || newName.trim().length < 2}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {adding ? "Adicionando..." : "Salvar aluno"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Lista de presença */}
           <div className="rounded-2xl overflow-hidden border">
             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
@@ -343,7 +445,7 @@ export default function EditChamadaClient({
 
                 <button
                   type="button"
-                  onClick={() => setShowAdd(true)}
+                  onClick={() => setShowAdd((s) => !s)}
                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
                 >
                   Adicionar aluno
@@ -465,20 +567,6 @@ export default function EditChamadaClient({
             </div>
           </div>
         </div>
-      )}
-
-      {/* MODAL adicionar aluno */}
-      {(!readOnly && showAdd) && (
-        <AddStudentModal
-          classId={classId}
-          open={showAdd}
-          onClose={() => setShowAdd(false)}
-          onAdded={(st) => {
-            setStudents((prev) => [st, ...prev]);
-            setPresence((p) => ({ ...(p || {}), [st.id]: true }));
-            setShowAdd(false);
-          }}
-        />
       )}
     </main>
   );
