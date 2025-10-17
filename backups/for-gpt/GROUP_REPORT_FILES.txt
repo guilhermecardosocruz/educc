@@ -1,0 +1,233 @@
+
+===== app/groups/[groupId]/page.tsx =====
+1 'use client';
+2 
+3 import { useEffect, useState } from 'react';
+4 import Link from 'next/link';
+5 import { useRouter, useParams } from 'next/navigation';
+6 
+7 type ClassLite = { id: string; name: string };
+8 type GroupDetail = { id: string; name: string; classes: ClassLite[] };
+9 
+10 export default function GroupPage() {
+11   const router = useRouter();
+12   const params = useParams<{ groupId: string }>();
+13   const groupId = params?.groupId as string;
+14 
+15   const [loading, setLoading] = useState(true);
+16   const [err, setErr] = useState<string | null>(null);
+17   const [group, setGroup] = useState<GroupDetail | null>(null);
+18 
+19   async function load() {
+20     setLoading(true);
+21     setErr(null);
+22     try {
+23       const res = await fetch(`/api/class-groups/${groupId}`, { cache: 'no-store' });
+24       const data = await res.json().catch(() => ({}));
+25       if (!res.ok || !data?.ok) throw new Error(data?.error ?? 'Falha ao carregar grupo');
+26       const g = data.group as GroupDetail;
+27       setGroup({ id: g.id, name: g.name, classes: data.classes ?? g.classes ?? [] });
+28     } catch (e: any) {
+29       setErr(e?.message || 'Erro ao carregar');
+30     } finally {
+31       setLoading(false);
+32     }
+33   }
+34 
+35   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+36 
+37   if (loading) {
+38     return (
+39       <main className="min-h-screen flex items-center justify-center">
+40         Carregando...
+41       </main>
+42     );
+43   }
+44 
+45   if (err) {
+46     return (
+47       <main className="min-h-screen flex items-center justify-center">
+48         <div className="card p-6">
+49           <p className="text-red-600">{err}</p>
+50           <div className="mt-4">
+51             <button onClick={() => router.back()} className="btn-primary">Voltar</button>
+52           </div>
+53         </div>
+54       </main>
+55     );
+56   }
+57 
+58   if (!group) {
+59     return (
+60       <main className="min-h-screen flex items-center justify-center">
+61         <div className="card p-6">
+62           <p className="text-gray-600">Grupo não encontrado.</p>
+63           <div className="mt-4">
+64             <button onClick={() => router.back()} className="btn-primary">Voltar</button>
+65           </div>
+66         </div>
+67       </main>
+68     );
+69   }
+70 
+71   return (
+72     <main className="min-h-screen p-6 lg:p-10">
+73       <header className="flex items-center justify-between max-w-5xl mx-auto mb-6">
+74         <div className="flex items-center gap-3">
+75           <button
+76             onClick={() => router.back()}
+77             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border hover:bg-gray-50"
+78             aria-label="Voltar"
+79             title="Voltar"
+80           >
+81             ← Voltar
+82           </button>
+83           <h1 className="text-xl font-semibold">Grupo: {group.name}</h1>
+84         </div>
+85         <Link href="/dashboard" className="text-sm text-[var(--color-brand-blue)] hover:underline">
+86           Ir para Dashboard
+87         </Link>
+88       </header>
+89 
+90       <section className="max-w-5xl mx-auto">
+91         {/* Turmas do grupo (clicáveis) */}
+92         <div className="card p-6 mb-6">
+93           <h2 className="font-semibold mb-3">Turmas deste grupo</h2>
+94           {group.classes?.length ? (
+95             <div className="flex flex-wrap gap-2">
+96               {group.classes.map((c) => (
+97                 <Link
+98                   key={c.id}
+99                   href={`/classes/${c.id}`}
+100                   className="px-3 py-1.5 rounded-full border hover:bg-gray-50 text-sm"
+101                   title={`Abrir turma: ${c.name}`}
+102                 >
+103                   {c.name}
+104                 </Link>
+105               ))}
+106             </div>
+107           ) : (
+108             <p className="text-gray-600 text-sm">Nenhuma turma vinculada a este grupo.</p>
+109           )}
+110         </div>
+111 
+112         {/* Placeholder de relatórios */}
+113         <div className="card p-6">
+114           <h2 className="font-semibold mb-2">Relatórios</h2>
+115           <p className="text-gray-600">
+116             Aqui haverá relatórios.
+117           </p>
+118         </div>
+119       </section>
+120     </main>
+121   );
+122 }
+
+===== components/GroupReportButton.tsx =====
+[MISSING] components/GroupReportButton.tsx
+
+===== components/DateRangePicker.tsx =====
+[MISSING] components/DateRangePicker.tsx
+
+===== app/api/class-groups/[groupId]/report/route.ts =====
+[MISSING] app/api/class-groups/[groupId]/report/route.ts
+
+===== app/api/class-groups/[groupId]/analytics/route.ts =====
+[MISSING] app/api/class-groups/[groupId]/analytics/route.ts
+
+===== lib/analytics/attendance.ts =====
+[MISSING] lib/analytics/attendance.ts
+
+===== lib/report/pdf.ts =====
+[MISSING] lib/report/pdf.ts
+
+===== lib/session.ts =====
+1 import { cookies, headers } from "next/headers";
+2 import { prisma } from "@/lib/prisma";
+3 import { ClassRole } from "@prisma/client";
+4 
+5 const COOKIE_NAME = "session_user_id";
+6 
+7 /** Lê o userId do cookie (async em Next 15) */
+8 export async function getSessionUserId(): Promise<string | null> {
+9   try {
+10     const c = await cookies();
+11     const id = c.get(COOKIE_NAME)?.value || null;
+12     return id;
+13   } catch {
+14     // Fallback para contexts onde cookies() não está disponível
+15     const h = await headers();
+16     const cookieHeader = h.get("cookie") || "";
+17     const m = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+18     return m ? m[1] : null;
+19   }
+20 }
+21 
+22 /** Busca o usuário logado; retorna null se não houver */
+23 export async function requireUser() {
+24   const id = await getSessionUserId();
+25   if (!id) return null;
+26   const user = await prisma.user.findUnique({
+27     where: { id },
+28     select: { id: true, name: true, email: true }
+29   });
+30   return user;
+31 }
+32 
+33 /** Apaga o cookie de sessão (async em Next 15) */
+34 export async function clearSessionCookie() {
+35   const c = await cookies();
+36   c.set({
+37     name: COOKIE_NAME,
+38     value: "",
+39     httpOnly: true,
+40     path: "/",
+41     maxAge: 0
+42   });
+43 }
+44 
+45 // === Access helpers (ClassAccess) ============================================
+46 
+47 /**
+48  * Retorna o papel do usuário na turma (PROFESSOR | GESTOR) ou null se não tem acesso.
+49  */
+50 export async function getRole(userId: string, classId: string): Promise<ClassRole | null> {
+51   try {
+52     const row = await prisma.classAccess.findFirst({
+53       where: { classId, userId },
+54       select: { role: true },
+55     });
+56     return row?.role ?? null;
+57   } catch (_e) {
+58     return null;
+59   }
+60 }
+61 
+62 /** Versão que usa o usuário logado da sessão atual. */
+63 export async function getMyRole(classId: string): Promise<ClassRole | null> {
+64   const me = await requireUser();
+65   if (!me) return null;
+66   return getRole(me.id, classId);
+67 }
+68 
+69 /** Açúcares para checagens rápidas na UI/rota. */
+70 export function roleFlags(role: ClassRole | null) {
+71   return {
+72     isProfessor: role === "PROFESSOR",
+73     isGestor: role === "GESTOR",
+74     hasAccess: role === "PROFESSOR" || role === "GESTOR",
+75   };
+76 }
+
+===== lib/prisma.ts =====
+1 import { PrismaClient } from "@prisma/client";
+2 
+3 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+4 
+5 export const prisma =
+6   globalForPrisma.prisma ??
+7   new PrismaClient({
+8     log: ["error", "warn"],
+9   });
+10 
+11 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

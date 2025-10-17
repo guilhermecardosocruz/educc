@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
+import GroupReportButton from '@/components/GroupReportButton';
 
 type ClassLite = { id: string; name: string };
 type GroupDetail = { id: string; name: string; classes: ClassLite[] };
@@ -87,9 +88,9 @@ export default function GroupPage() {
         </Link>
       </header>
 
-      <section className="max-w-5xl mx-auto">
+      <section className="max-w-5xl mx-auto space-y-6">
         {/* Turmas do grupo (clicáveis) */}
-        <div className="card p-6 mb-6">
+        <div className="card p-6">
           <h2 className="font-semibold mb-3">Turmas deste grupo</h2>
           {group.classes?.length ? (
             <div className="flex flex-wrap gap-2">
@@ -109,12 +110,10 @@ export default function GroupPage() {
           )}
         </div>
 
-        {/* Placeholder de relatórios */}
+        {/* Relatórios */}
         <div className="card p-6">
-          <h2 className="font-semibold mb-2">Relatórios</h2>
-          <p className="text-gray-600">
-            Aqui haverá relatórios.
-          </p>
+          <h2 className="font-semibold mb-3">Relatórios</h2>
+          <GroupReportButton groupId={group.id} />
         </div>
       </section>
     </main>
