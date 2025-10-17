@@ -1,0 +1,626 @@
+
+===== app/dashboard/page.tsx =====
+1 "use client";
+2 import { useEffect, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 import ClassCard from "./ClassCard";
+5 import CreateGroupModal from "@/components/CreateGroupModal";
+6 
+7 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
+8 type Role = "PROFESSOR" | "GESTOR" | null;
+9 type ClassItem = { id: string; name: string; createdAt: string; roleForMe: Role };
+10 
+11 type GroupItem = { id: string; name: string; classesCount?: number };
+12 
+13 export default function DashboardPage() {
+14   const router = useRouter();
+15   const [me, setMe] = useState<Me | null>(null);
+16   const [loading, setLoading] = useState(true);
+17   const [classes, setClasses] = useState<ClassItem[]>([]);
+18   const [name, setName] = useState("");
+19   const [err, setErr] = useState<string | null>(null);
+20 
+21   const [groups, setGroups] = useState<GroupItem[]>([]);
+22   const [groupModalOpen, setGroupModalOpen] = useState(false);
+23 
+24   async function fetchMe() {
+25     const res = await fetch("/api/auth/me", { cache: "no-store" });
+26     if (res.status === 401) {
+27       router.push("/login");
+28       return;
+29     }
+30     const data: Me = await res.json();
+31     setMe(data);
+32   }
+33 
+34   async function fetchClasses() {
+35     const res = await fetch("/api/classes", { cache: "no-store" });
+36     if (res.status === 401) {
+37       router.push("/login");
+38       return;
+39     }
+40     const data = await res.json();
+41     if (data?.ok) setClasses(data.classes || []);
+42   }
+43 
+44   async function fetchGroups() {
+45     const res = await fetch("/api/class-groups", { cache: "no-store" });
+46     if (res.status === 401) {
+47       router.push("/login");
+48       return;
+49     }
+50     const data = await res.json().catch(()=> ({}));
+51     if (res.ok && data?.ok) {
+52       setGroups((data.groups || []).map((g: any) => ({
+53         id: g.id,
+54         name: g.name,
+55         classesCount: g.classesCount ?? g.count ?? undefined
+56       })));
+57     }
+58   }
+59 
+60   useEffect(() => {
+61     (async () => {
+62       await fetchMe();
+63       await fetchClasses();
+64       await fetchGroups();
+65       setLoading(false);
+66     })();
+67     // eslint-disable-next-line react-hooks/exhaustive-deps
+68   }, []);
+69 
+70   async function onLogout() {
+71     await fetch("/api/auth/logout", { method: "POST" });
+72     router.push("/login");
+73   }
+74 
+75   async function onCreateClass(e: React.FormEvent) {
+76     e.preventDefault();
+77     setErr(null);
+78     const n = name.trim();
+79     if (n.length < 2) {
+80       setErr("Nome da turma muito curto.");
+81       return;
+82     }
+83     const res = await fetch("/api/classes", {
+84       method: "POST",
+85       headers: { "content-type": "application/json" },
+86       body: JSON.stringify({ name: n })
+87     });
+88     const data = await res.json();
+89     if (!res.ok || !data?.ok) {
+90       setErr(data?.error ?? "Erro ao criar turma");
+91       return;
+92     }
+93     setName("");
+94     await fetchClasses();
+95   }
+96 
+97   if (loading) {
+98     return <main className="min-h-screen flex items-center justify-center">Carregando...</main>;
+99   }
+100 
+101   const firstName = me?.user?.name?.split(" ")[0] || "Olá";
+102 
+103   return (
+104     <main className="min-h-screen p-6 lg:p-10">
+105       <header className="flex items-center justify-between max-w-5xl mx-auto mb-8">
+106         <div className="flex items-center gap-3">
+107           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+108           <h1 className="text-2xl font-semibold">EDUCC • Dashboard</h1>
+109         </div>
+110         <button onClick={onLogout} className="btn-primary">Sair</button>
+111       </header>
+112 
+113       <section className="max-w-5xl mx-auto">
+114         <div className="card p-6 mb-8">
+115           <h2 className="text-xl font-semibold">{firstName}, bem-vindo(a)!</h2>
+116           <p className="text-gray-600">Gerencie suas turmas e grupos abaixo.</p>
+117         </div>
+118 
+119         {/* Criar turma */}
+120         <div className="card p-6 mb-6">
+121           <h3 className="font-semibold mb-3">Criar nova turma</h3>
+122           <form onSubmit={onCreateClass} className="flex flex-col sm:flex-row gap-3">
+123             <input
+124               className="input flex-1"
+125               type="text"
+126               placeholder="Nome da turma"
+127               value={name}
+128               onChange={(e) => setName(e.target.value)}
+129               required
+130               minLength={2}
+131             />
+132             <button type="submit" className="btn-primary">Criar turma</button>
+133           </form>
+134           {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
+135         </div>
+136 
+137         {/* Criar grupo de turma (mesmo design) */}
+138         <div className="card p-6 mb-6">
+139           <h3 className="font-semibold mb-3">Criar grupo de turma</h3>
+140           <div className="flex flex-col sm:flex-row gap-3">
+141             <input
+142               className="input flex-1"
+143               type="text"
+144               placeholder="Nome do grupo"
+145               onClick={() => setGroupModalOpen(true)}
+146               readOnly
+147             />
+148             <button type="button" className="btn-primary" onClick={() => setGroupModalOpen(true)}>
+149               Criar grupo de turma
+150             </button>
+151           </div>
+152           <p className="text-xs text-gray-500 mt-2">
+153             Ao abrir, você poderá informar o nome e escolher as turmas do grupo.
+154           </p>
+155         </div>
+156 
+157         {/* Listagem de grupos */}
+158         <div className="card p-6 mb-6">
+159           <h3 className="font-semibold mb-4">Meus grupos</h3>
+160           {groups.length === 0 ? (
+161             <p className="text-gray-600">Nenhum grupo criado ainda.</p>
+162           ) : (
+163             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+164               {groups.map((g) => (
+165                 <a
+166                   key={g.id}
+167                   href={`/groups/${g.id}`}
+168                   className="block border rounded-xl p-4 hover:shadow-sm transition"
+169                 >
+170                   <div className="flex items-center justify-between gap-3">
+171                     <h3 className="font-semibold truncate">{g.name}</h3>
+172                     {typeof g.classesCount === 'number' ? (
+173                       <span className="text-xs text-gray-500">{g.classesCount} turma(s)</span>
+174                     ) : null}
+175                   </div>
+176                 </a>
+177               ))}
+178             </div>
+179           )}
+180         </div>
+181 
+182         {/* Listagem de turmas */}
+183         <div className="card p-6">
+184           <h3 className="font-semibold mb-4">Minhas turmas</h3>
+185           {classes.length === 0 ? (
+186             <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
+187           ) : (
+188             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+189               {classes.map((c) => (
+190                 <ClassCard key={c.id} cls={c as any} />
+191               ))}
+192             </div>
+193           )}
+194         </div>
+195       </section>
+196 
+197       <CreateGroupModal open={groupModalOpen} onOpenChange={setGroupModalOpen} onCreated={fetchGroups} />
+198     </main>
+199   );
+200 }
+
+===== app/(app)/dashboard/ClassCard.tsx =====
+1 "use client";
+2 import Link from "next/link";
+3 import { useEffect, useRef, useState } from "react";
+4 import ShareClassModal from "@/components/ShareClassModal";
+5 import LinkToGroupModal from "@/components/LinkToGroupModal";
+6 
+7 type Role = "PROFESSOR" | "GESTOR" | null;
+8 type ClassLite = { id: string; name: string; roleForMe?: Role };
+9 export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filterGroupId?: string | null }) {
+10   const item = cls;
+11   const [menuOpen, setMenuOpen] = useState(false);
+12   const [shareOpen, setShareOpen] = useState(false);
+13   const [linkOpen, setLinkOpen] = useState(false);
+14   const menuRef = useRef<HTMLDivElement | null>(null);
+15 
+16   useEffect(() => {
+17     function onDocClick(e: MouseEvent) {
+18       if (!menuRef.current) return;
+19       if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+20     }
+21     if (menuOpen) document.addEventListener("mousedown", onDocClick);
+22     return () => document.removeEventListener("mousedown", onDocClick);
+23   }, [menuOpen]);
+24 
+25   const badge =
+26     item.roleForMe ? (
+27       <span
+28         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+29           item.roleForMe === "PROFESSOR"
+30             ? "bg-blue-50 text-blue-700 border border-blue-200"
+31             : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+32         }`}
+33       >
+34         {item.roleForMe === "PROFESSOR" ? "Professor" : "Gestor"}
+35       </span>
+36     ) : null;
+37 
+38   async function onDelete() {
+39     if (!confirm("Tem certeza que deseja excluir esta turma? Esta ação não pode ser desfeita.")) return;
+40     const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
+41     const data = await res.json().catch(() => ({}));
+42     if (!res.ok || data?.ok === false) {
+43       alert(data?.error || "Erro ao excluir turma");
+44       return;
+45     }
+46     window.location.reload();
+47   }
+48 
+49   return (
+50     <div className="relative">
+51       <Link href={`/classes/${item.id}`} className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition">
+52         <div className="flex items-center justify-between gap-3">
+53           <h3 className="font-semibold truncate">{item.name}</h3>
+54           {badge}
+55         </div>
+56       </Link>
+57 
+58       <div className="absolute top-2 right-2" ref={menuRef}>
+59         <button
+60           type="button"
+61           className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
+62           aria-label="Mais ações"
+63           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen((v) => !v); }}
+64         >
+65           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+66             <circle cx="12" cy="5" r="1.8" />
+67             <circle cx="12" cy="12" r="1.8" />
+68             <circle cx="12" cy="19" r="1.8" />
+69           </svg>
+70         </button>
+71 
+72         {menuOpen && (
+73           <div className="absolute right-0 mt-2 w-48 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
+74             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
+75               Compartilhar
+76             </button>
+77             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setLinkOpen(true); }}>
+78               Vincular a grupo
+79             </button>
+80             <div className="my-1 border-t" />
+81             <button className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setMenuOpen(false); onDelete(); }}>
+82               Excluir
+83             </button>
+84           </div>
+85         )}
+86       </div>
+87 
+88       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
+89       <LinkToGroupModal classId={item.id} open={linkOpen} onOpenChange={setLinkOpen} />
+90     </div>
+91   );
+92 }
+
+===== app/dashboard/ClassCard.tsx =====
+1 "use client";
+2 import Link from "next/link";
+3 import { useEffect, useRef, useState } from "react";
+4 import ShareClassModal from "@/components/ShareClassModal";
+5 import LinkToGroupModal from "@/components/LinkToGroupModal";
+6 
+7 type Role = "PROFESSOR" | "GESTOR" | null;
+8 type ClassLite = { id: string; name: string; roleForMe?: Role };
+9 export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filterGroupId?: string | null }) {
+10   const item = cls;
+11   const [menuOpen, setMenuOpen] = useState(false);
+12   const [shareOpen, setShareOpen] = useState(false);
+13   const [linkOpen, setLinkOpen] = useState(false);
+14   const menuRef = useRef<HTMLDivElement | null>(null);
+15 
+16   useEffect(() => {
+17     function onDocClick(e: MouseEvent) {
+18       if (!menuRef.current) return;
+19       if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+20     }
+21     if (menuOpen) document.addEventListener("mousedown", onDocClick);
+22     return () => document.removeEventListener("mousedown", onDocClick);
+23   }, [menuOpen]);
+24 
+25   const badge =
+26     item.roleForMe ? (
+27       <span
+28         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+29           item.roleForMe === "PROFESSOR"
+30             ? "bg-blue-50 text-blue-700 border border-blue-200"
+31             : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+32         }`}
+33       >
+34         {item.roleForMe === "PROFESSOR" ? "Professor" : "Gestor"}
+35       </span>
+36     ) : null;
+37 
+38   async function onDelete() {
+39     if (!confirm("Tem certeza que deseja excluir esta turma? Esta ação não pode ser desfeita.")) return;
+40     const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
+41     const data = await res.json().catch(() => ({}));
+42     if (!res.ok || data?.ok === false) {
+43       alert(data?.error || "Erro ao excluir turma");
+44       return;
+45     }
+46     window.location.reload();
+47   }
+48 
+49   return (
+50     <div className="relative">
+51       <Link href={`/classes/${item.id}`} className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition">
+52         <div className="flex items-center justify-between gap-3">
+53           <h3 className="font-semibold truncate">{item.name}</h3>
+54           {badge}
+55         </div>
+56       </Link>
+57 
+58       <div className="absolute top-2 right-2" ref={menuRef}>
+59         <button
+60           type="button"
+61           className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
+62           aria-label="Mais ações"
+63           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen((v) => !v); }}
+64         >
+65           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+66             <circle cx="12" cy="5" r="1.8" />
+67             <circle cx="12" cy="12" r="1.8" />
+68             <circle cx="12" cy="19" r="1.8" />
+69           </svg>
+70         </button>
+71 
+72         {menuOpen && (
+73           <div className="absolute right-0 mt-2 w-48 rounded-md border bg-white shadow-md z-10" onClick={(e) => { e.stopPropagation(); }}>
+74             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setShareOpen(true); }}>
+75               Compartilhar
+76             </button>
+77             <button className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50" onClick={() => { setMenuOpen(false); setLinkOpen(true); }}>
+78               Vincular a grupo
+79             </button>
+80             <div className="my-1 border-t" />
+81             <button className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setMenuOpen(false); onDelete(); }}>
+82               Excluir
+83             </button>
+84           </div>
+85         )}
+86       </div>
+87 
+88       <ShareClassModal classId={item.id} open={shareOpen} onOpenChange={setShareOpen} />
+89       <LinkToGroupModal classId={item.id} open={linkOpen} onOpenChange={setLinkOpen} />
+90     </div>
+91   );
+92 }
+
+===== components/CreateGroupModal.tsx =====
+1 "use client";
+2 import { useEffect, useState } from "react";
+3 
+4 type ClassItem = { id: string; name: string };
+5 type Props = {
+6   open: boolean;
+7   onOpenChange: (v: boolean) => void;
+8   classes: ClassItem[];
+9   onCreated?: () => void;
+10 };
+11 
+12 export default function CreateGroupModal({ open, onOpenChange, classes, onCreated }: Props) {
+13   const [name, setName] = useState("");
+14   const [selected, setSelected] = useState<Record<string, boolean>>({});
+15   const [loading, setLoading] = useState(false);
+16   const [err, setErr] = useState<string | null>(null);
+17 
+18   useEffect(() => {
+19     if (open) { setName(""); setSelected({}); setErr(null); }
+20   }, [open]);
+21 
+22   async function handleCreate() {
+23     setLoading(true); setErr(null);
+24     try {
+25       const classIds = Object.entries(selected).filter(([,v]) => v).map(([k]) => k);
+26       const res = await fetch("/api/class-groups", {
+27         method: "POST",
+28         headers: { "content-type": "application/json" },
+29         body: JSON.stringify({ name: name.trim(), classIds })
+30       });
+31       const data = await res.json();
+32       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao criar grupo");
+33       onOpenChange(false);
+34       onCreated?.();
+35     } catch (e: any) {
+36       setErr(e?.message || "Erro ao criar grupo");
+37     } finally {
+38       setLoading(false);
+39     }
+40   }
+41 
+42   if (!open) return null;
+43 
+44   return (
+45     <div className="fixed inset-0 z-50">
+46       <div className="absolute inset-0 bg-black/30" onClick={() => onOpenChange(false)} aria-hidden="true" />
+47       <div className="absolute inset-0 flex items-center justify-center p-4">
+48         <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+49           <div className="flex items-center justify-between mb-3">
+50             <h2 className="text-lg font-semibold">Criar grupo de turma</h2>
+51             <button className="p-1 rounded-md hover:bg-gray-100" onClick={() => onOpenChange(false)} aria-label="Fechar">✕</button>
+52           </div>
+53 
+54           <div className="space-y-4">
+55             <div>
+56               <label className="text-sm font-medium">Nome do grupo</label>
+57               <input
+58                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+59                 value={name}
+60                 onChange={(e) => setName(e.target.value)}
+61                 placeholder="Ex.: 1º semestre 2026"
+62               />
+63             </div>
+64 
+65             <div>
+66               <div className="text-sm font-medium mb-1">Selecionar turmas (opcional)</div>
+67               <div className="max-h-48 overflow-auto border rounded-md divide-y">
+68                 {classes.length === 0 ? (
+69                   <div className="p-3 text-sm text-gray-500">Você ainda não tem turmas.</div>
+70                 ) : classes.map(c => (
+71                   <label key={c.id} className="flex items-center gap-2 p-2">
+72                     <input
+73                       type="checkbox"
+74                       checked={!!selected[c.id]}
+75                       onChange={(e) => setSelected(s => ({ ...s, [c.id]: e.target.checked }))}
+76                     />
+77                     <span className="text-sm">{c.name}</span>
+78                   </label>
+79                 ))}
+80               </div>
+81             </div>
+82 
+83             {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-2">{err}</div>}
+84           </div>
+85 
+86           <div className="mt-4 flex items-center justify-end gap-2">
+87             <button className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" onClick={() => onOpenChange(false)}>Cancelar</button>
+88             <button
+89               className="px-3 py-1.5 rounded-lg bg-blue-600 text-white disabled:opacity-60"
+90               onClick={handleCreate}
+91               disabled={loading || name.trim().length < 2}
+92             >
+93               {loading ? "Salvando..." : "Criar grupo de turma"}
+94             </button>
+95           </div>
+96         </div>
+97       </div>
+98     </div>
+99   );
+100 }
+
+===== components/LinkToGroupModal.tsx =====
+1 "use client";
+2 import { useEffect, useState } from "react";
+3 
+4 type GroupRow = { id: string; name: string; linked: boolean };
+5 type Props = {
+6   classId: string;
+7   open: boolean;
+8   onOpenChange: (v: boolean) => void;
+9 };
+10 
+11 export default function LinkToGroupModal({ classId, open, onOpenChange }: Props) {
+12   const [loading, setLoading] = useState(false);
+13   const [groups, setGroups] = useState<GroupRow[]>([]);
+14   const [err, setErr] = useState<string | null>(null);
+15 
+16   async function load() {
+17     setLoading(true); setErr(null);
+18     try {
+19       const res = await fetch(`/api/classes/${classId}/groups`, { cache: "no-store" });
+20       const data = await res.json();
+21       if (!res.ok || !data?.ok) throw new Error(data?.error || "Falha ao listar grupos");
+22       setGroups(data.groups || []);
+23     } catch (e: any) { setErr(e?.message || "Erro ao carregar"); }
+24     finally { setLoading(false); }
+25   }
+26 
+27   useEffect(() => { if (open) load(); }, [open]);
+28 
+29   async function toggle(group: GroupRow) {
+30     setLoading(true); setErr(null);
+31     try {
+32       if (group.linked) {
+33         const res = await fetch(`/api/class-groups/${group.id}/classes?classId=${encodeURIComponent(classId)}`, { method: "DELETE" });
+34         const data = await res.json().catch(() => ({}));
+35         if (!res.ok || data?.ok === false) throw new Error(data?.error || "Falha ao desvincular");
+36       } else {
+37         const res = await fetch(`/api/class-groups/${group.id}/classes`, {
+38           method: "POST", headers: { "content-type": "application/json" },
+39           body: JSON.stringify({ classId })
+40         });
+41         const data = await res.json().catch(() => ({}));
+42         if (!res.ok || data?.ok === false) throw new Error(data?.error || "Falha ao vincular");
+43       }
+44       await load();
+45     } catch (e: any) { setErr(e?.message || "Erro ao atualizar"); }
+46     finally { setLoading(false); }
+47   }
+48 
+49   if (!open) return null;
+50 
+51   return (
+52     <div className="fixed inset-0 z-50">
+53       <div className="absolute inset-0 bg-black/30" onClick={() => onOpenChange(false)} aria-hidden="true" />
+54       <div className="absolute inset-0 flex items-center justify-center p-4">
+55         <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+56           <div className="flex items-center justify-between mb-3">
+57             <h2 className="text-lg font-semibold">Vincular a grupo</h2>
+58             <button className="p-1 rounded-md hover:bg-gray-100" onClick={() => onOpenChange(false)} aria-label="Fechar">✕</button>
+59           </div>
+60 
+61           <div className="border rounded-md max-h-72 overflow-auto divide-y">
+62             {loading ? (
+63               <div className="p-3 text-sm text-gray-500">Carregando…</div>
+64             ) : groups.length === 0 ? (
+65               <div className="p-3 text-sm text-gray-500">Você ainda não tem grupos.</div>
+66             ) : groups.map(g => (
+67               <div key={g.id} className="p-3 flex items-center justify-between gap-3">
+68                 <div className="text-sm">{g.name}</div>
+69                 <button
+70                   className={`px-3 py-1.5 rounded-lg text-sm ${g.linked ? "border border-red-300 bg-red-50 text-red-700 hover:bg-red-100" : "border border-gray-300 hover:bg-gray-50"}`}
+71                   onClick={() => toggle(g)}
+72                   disabled={loading}
+73                 >
+74                   {g.linked ? "Desvincular" : "Vincular"}
+75                 </button>
+76               </div>
+77             ))}
+78           </div>
+79 
+80           {err && <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-2">{err}</div>}
+81 
+82           <div className="mt-4 text-right">
+83             <button className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" onClick={() => onOpenChange(false)}>Fechar</button>
+84           </div>
+85         </div>
+86       </div>
+87     </div>
+88   );
+89 }
+
+===== styles/globals.css =====
+1 
+2 
+3 :root {
+4   --color-brand-blue: #0A66FF;
+5 }
+6 .bg-brand-blue { background-color: var(--color-brand-blue); }
+7 
+8 
+9 /* Utilitário de sombra suave para cards */
+10 .shadow-soft { box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.08); }
+11 
+12 /* ===== Stack de ações da turma ===== */
+13 .actions-stack {
+14   max-width: 28rem;        /* ~448px, mantém o bloco elegante */
+15   margin-left: auto;
+16   margin-right: auto;
+17 }
+18 .actions-stack a,
+19 .actions-stack button {
+20   width: 100%;             /* todos os botões 100% dentro do stack */
+21   text-align: center;
+22   padding-top: 0.875rem;   /* py-3.5 */
+23   padding-bottom: 0.875rem;
+24   font-size: 1rem;         /* text-base */
+25   border-radius: 0.75rem;  /* rounded-xl */
+26 }
+27 
+28 /* ===== Correção da stack de ações: links/botões grandes e 100% ===== */
+29 .actions-stack a,
+30 .actions-stack button {
+31   display: block;          /* <— chave para respeitar width */
+32   width: 100%;
+33   text-align: center;
+34   padding-top: 0.875rem;   /* ~py-3.5 */
+35   padding-bottom: 0.875rem;
+36   padding-left: 1rem;
+37   padding-right: 1rem;
+38   font-size: 1rem;         /* text-base */
+39   border-radius: 0.75rem;  /* rounded-xl */
+40 }
+41 .actions-stack a { text-decoration: none; }

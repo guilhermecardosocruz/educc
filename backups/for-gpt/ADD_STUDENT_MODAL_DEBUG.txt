@@ -1,0 +1,1264 @@
+
+===== app/classes/[id]/chamadas/new/page.tsx =====
+1 "use client";
+2 
+3 import Link from "next/link";
+4 import { useRouter, useParams } from "next/navigation";
+5 import { useEffect, useMemo, useRef, useState } from "react";
+6 
+7 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
+8 
+9 export default function NewCallPage() {
+10   const router = useRouter();
+11   const { id } = useParams<{ id: string }>();
+12 
+13   const [title, setTitle] = useState("");
+14   const [lessonDate, setLessonDate] = useState<string>(() => {
+15     const now = new Date();
+16     const yyyy = now.getFullYear();
+17     const mm = String(now.getMonth() + 1).padStart(2, '0');
+18     const dd = String(now.getDate()).padStart(2, '0');
+19     return `${yyyy}-${mm}-${dd}`;
+20   });
+21   const [students, setStudents] = useState<Student[]>([]);
+22   const [presence, setPresence] = useState<Record<string, boolean>>({});
+23   const [saving, setSaving] = useState(false);
+24 
+25   // Adicionar aluno
+26   const [showAdd, setShowAdd] = useState(false);
+27   const [newName, setNewName] = useState("");
+28   const [newCpf, setNewCpf] = useState("");
+29   const [newContact, setNewContact] = useState("");
+30   const [adding, setAdding] = useState(false);
+31 
+32   // Import planilha
+33   const [uploadName, setUploadName] = useState<string | null>(null);
+34   const [uploadFile, setUploadFile] = useState<File | null>(null);
+35   const [importing, setImporting] = useState(false);
+36   const fileRef = useRef<HTMLInputElement | null>(null);
+37 
+38   // Editar aluno (modal)
+39   const [editId, setEditId] = useState<string | null>(null);
+40   const [editName, setEditName] = useState("");
+41 
+42   // 1) Carrega alunos iniciais e marca todos como presentes
+43   useEffect(() => {
+44     (async () => {
+45       if (!id) return;
+46       const res = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+47       const data = await res.json();
+48       if (data?.ok && Array.isArray(data.students)) {
+49         setStudents(data.students);
+50         const initial: Record<string, boolean> = {};
+51         for (const s of data.students) initial[s.id] = true;
+52         setPresence(initial);
+53       }
+54     })();
+55   }, [id]);
+56 
+57   // 2) Pré-preencher o "Nome da aula" com o título do conteúdo do próximo seq
+58   //    - Busca a última chamada (order=desc) para obter nextSeq
+59   //    - Busca a lista de conteúdos e pega o title onde seq === nextSeq
+60   useEffect(() => {
+61     (async () => {
+62       try {
+63         if (!id) return;
+64 
+65         // Última chamada para calcular nextSeq
+66         const resCalls = await fetch(`/api/classes/${id}/chamadas?order=desc`, { cache: "no-store" });
+67         let lastSeq = 0;
+68         if (resCalls.ok) {
+69           const payload = await resCalls.json().catch(() => ({}));
+70           const first = Array.isArray(payload?.attendances) ? payload.attendances[0] : null;
+71           lastSeq = Number(first?.seq || 0);
+72         }
+73         const nextSeq = lastSeq + 1;
+74 
+75         // Lista de conteúdos (já vem ordenada asc)
+76         const resContents = await fetch(`/api/classes/${id}/conteudos`, { cache: "no-store" });
+77         if (!resContents.ok) return;
+78         const contents = await resContents.json().then((d) => d?.list ?? []).catch(() => []);
+79         if (!Array.isArray(contents)) return;
+80 
+81         const match = contents.find((c: any) => Number(c?.seq) === nextSeq);
+82         if (match && typeof match.title === "string" && match.title.trim().length > 0) {
+83           // Só pré-preenche se o usuário ainda não digitou nada
+84           setTitle((prev) => (prev?.trim()?.length ? prev : match.title));
+85         }
+86       } catch {
+87         // Silencia falhas de prefill: não deve travar a criação
+88       }
+89     })();
+90   }, [id]);
+91 
+92   function toggleStudent(studentId: string) {
+93     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+94   }
+95   function setAll(v: boolean) {
+96     const all: Record<string, boolean> = {};
+97     for (const s of students) all[s.id] = v;
+98     setPresence(all);
+99   }
+100 
+101   // Modal editar (duplo clique no nome)
+102   function onDblClickStudent(st: Student) {
+103     setEditId(st.id);
+104     setEditName(st.name);
+105   }
+106   async function handleEditSave() {
+107     if (!id || !editId) return;
+108     const name = editName.trim();
+109     if (name.length < 2) {
+110       alert("Informe o nome (mínimo 2 caracteres).");
+111       return;
+112     }
+113     try {
+114       const res = await fetch(`/api/classes/${id}/students/${editId}`, {
+115         method: "PATCH",
+116         headers: { "content-type": "application/json" },
+117         body: JSON.stringify({ name }),
+118       });
+119       const data = await res.json().catch(() => ({}));
+120       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+121       setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
+122       setEditId(null);
+123       setEditName("");
+124     } catch (e: any) {
+125       alert(e?.message || "Erro ao salvar");
+126       console.error(e);
+127     }
+128   }
+129   async function handleEditDelete() {
+130     if (!id || !editId) return;
+131     if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+132     try {
+133       const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
+134       const data = await res.json().catch(() => ({}));
+135       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+136       setStudents(prev => prev.filter(s => s.id !== editId));
+137       setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+138       setEditId(null);
+139       setEditName("");
+140     } catch (e: any) {
+141       alert("Erro ao excluir aluno");
+142       console.error(e);
+143     }
+144   }
+145 
+146   // Adicionar aluno
+147   async function handleAddStudent() {
+148     if (!id) return;
+149     const name = newName.trim();
+150     const cpf = newCpf.trim();
+151     const contact = newContact.trim();
+152     if (name.length < 2) {
+153       alert("Informe o nome (mínimo 2 caracteres).");
+154       return;
+155     }
+156     setAdding(true);
+157     try {
+158       const body: any = { name };
+159       if (cpf.length) body.cpf = cpf;
+160       if (contact.length) body.contact = contact;
+161 
+162       const res = await fetch(`/api/classes/${id}/students`, {
+163         method: "POST",
+164         headers: { "content-type": "application/json" },
+165         body: JSON.stringify(body)
+166       });
+167       let payload: any = null;
+168       try { payload = await res.json(); } catch {}
+169       if (!res.ok || !payload?.ok) {
+170         let msg = "Erro ao adicionar aluno";
+171         const e = payload?.error;
+172         if (typeof e === "string") msg = e;
+173         else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+174         else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+175         throw new Error(msg);
+176       }
+177 
+178       const st: Student = payload.student;
+179       setStudents((prev) => [st, ...prev]);
+180       setPresence((p) => ({ ...p, [st.id]: true }));
+181       setNewName(""); setNewCpf(""); setNewContact("");
+182       setShowAdd(false);
+183     } catch (e: any) {
+184       alert(e?.message || "Erro ao adicionar aluno");
+185       console.error(e);
+186     } finally {
+187       setAdding(false);
+188     }
+189   }
+190 
+191   // Importação CSV/XLSX
+192   async function __handleImportSend() {
+193     if (!id || !uploadFile) {
+194       alert("Selecione um arquivo CSV/XLSX antes de enviar.");
+195       return;
+196     }
+197     setImporting(true);
+198     try {
+199       const fd = new FormData();
+200       fd.append("file", uploadFile);
+201       const res = await fetch(`/api/classes/${id}/students/import`, { method: "POST", body: fd });
+202       const data = await res.json();
+203       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+204 
+205       const res2 = await fetch(`/api/classes/${id}/students`, { cache: "no-store" });
+206       const data2 = await res2.json();
+207       if (data2?.ok && Array.isArray(data2.students)) {
+208         setStudents(data2.students);
+209         const next: Record<string, boolean> = {};
+210         for (const s of data2.students) next[s.id] = true;
+211         setPresence(next);
+212       }
+213       setUploadName(null); setUploadFile(null);
+214       if (fileRef.current) fileRef.current.value = "";
+215     } catch (e) {
+216       const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+217       console.error(e);
+218     } finally {
+219       setImporting(false);
+220     }
+221   }
+222 
+223   // Criar chamada + presenças
+224   async function handleCreate() {
+225     if (!id) return;
+226 
+227     // Se título estiver vazio, confirmar com o professor (mantendo comportamento do backend)
+228     if (!title.trim()) {
+229       const ok = confirm("O nome da aula está vazio.\nDeseja continuar mesmo assim? O sistema poderá salvar como \"Chamada\".");
+230       if (!ok) return;
+231     }
+232 
+233     setSaving(true);
+234     try {
+235       const res = await fetch(`/api/classes/${id}/chamadas`, {
+236         method: "POST",
+237         headers: { "content-type": "application/json" },
+238         body: JSON.stringify({ title: title.trim() || undefined, lessonDate: lessonDate || undefined })
+239       });
+240       const data = await res.json();
+241       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+242 
+243       const seq: number = data.attendance.seq;
+244       const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+245 
+246       const res2 = await fetch(`/api/classes/${id}/chamadas/${seq}/presences`, {
+247         method: "POST",
+248         headers: { "content-type": "application/json" },
+249         body: JSON.stringify({ presences })
+250       });
+251       const d2 = await res2.json();
+252       if (!res2.ok || !d2?.ok) throw new Error(d2?.error || "Falha ao salvar presenças");
+253 
+254       router.push(`/classes/${id}/chamadas`);
+255     } catch (e) {
+256       alert("Erro ao criar/salvar chamada");
+257       console.error(e);
+258     } finally {
+259       setSaving(false);
+260     }
+261   }
+262 
+263   const totalPresentes = useMemo(
+264     () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+265     [students, presence]
+266   );
+267 
+268   return (
+269     <main className="mx-auto max-w-5xl px-4 py-6">
+270       <nav className="mb-4 text-sm">
+271         <Link href={`/classes/${id}/chamadas`} className="text-blue-700 hover:underline">Voltar para Chamadas</Link>
+272       </nav>
+273 
+274       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+275         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+276           <div>
+277             <h1 className="text-xl font-semibold text-gray-900">Nova chamada</h1>
+278             <p className="text-sm text-gray-600">Marque a presença e crie a chamada desta aula.</p>
+279           </div>
+280 
+281           {/* Título + Data (desktop na mesma linha, mobile quebra) */}
+282           <div className="flex flex-wrap items-end gap-4">
+283             <div className="text-right">
+284               <div className="text-xs text-gray-500">Nome da aula</div>
+285               <input
+286                 value={title}
+287                 onChange={(e) => setTitle(e.target.value)}
+288                 placeholder="Ex.: Aula 01 - Introdução"
+289                 className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+290               />
+291             </div>
+292             <div className="min-w-40">
+293               <div className="text-xs text-gray-500">Data</div>
+294               <input
+295                 type="date"
+296                 value={lessonDate}
+297                 onChange={(e) => setLessonDate(e.target.value)}
+298                 className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+299               />
+300             </div>
+301           </div>
+302         </div>
+303 
+304         <div className="space-y-5 px-5 py-5">
+305           {/* Adicionar aluno */}
+306           {showAdd && (
+307             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+308               <div className="grid gap-3 md:grid-cols-3">
+309                 <div className="grid gap-1">
+310                   <label className="text-xs font-medium text-gray-700">Nome</label>
+311                   <input
+312                     value={newName}
+313                     onChange={(e) => setNewName(e.target.value)}
+314                     placeholder="Ex.: Maria Silva"
+315                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+316                   />
+317                 </div>
+318                 <div className="grid gap-1">
+319                   <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+320                   <input
+321                     value={newCpf}
+322                     onChange={(e) => setNewCpf(e.target.value)}
+323                     placeholder="Somente números"
+324                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+325                   />
+326                 </div>
+327                 <div className="grid gap-1">
+328                   <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+329                   <input
+330                     value={newContact}
+331                     onChange={(e) => setNewContact(e.target.value)}
+332                     placeholder="Ex.: (48) 99999-9999"
+333                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+334                   />
+335                 </div>
+336               </div>
+337               <div className="mt-3 flex items-center gap-2">
+338                 <button
+339                   type="button"
+340                   onClick={handleAddStudent}
+341                   disabled={adding || newName.trim().length < 2}
+342                   className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+343                 >
+344                   {adding ? "Adicionando..." : "Salvar aluno"}
+345                 </button>
+346                 <button
+347                   type="button"
+348                   onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+349                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+350                 >
+351                   Cancelar
+352                 </button>
+353               </div>
+354             </div>
+355           )}
+356 
+357           {/* Lista de presença */}
+358           <div className="rounded-2xl overflow-hidden border">
+359             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+360               <div className="font-semibold">Lista de presença</div>
+361               <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+362             </div>
+363 
+364             <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+365               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+366               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+367             </div>
+368 
+369             <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+370               <div className="px-1.5 py-2 text-center">#</div>
+371               <div className="px-3 py-2">Aluno</div>
+372               <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+373             </div>
+374 
+375             <div className="max-h-[60vh] overflow-auto">
+376               {students.length === 0 ? (
+377                 <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+378               ) : students.map((s, idx) => {
+379                 const isEven = idx % 2 === 0;
+380                 return (
+381                   <div
+382                     key={s.id}
+383                     className={[
+384                       "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+385                       "border-b border-blue-100",
+386                       isEven ? "bg-blue-50/40" : "bg-white"
+387                     ].join(" ")}
+388                   >
+389                     <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+390                     <div className="px-3 py-2">
+391                       <div
+392                         className="font-medium text-gray-900 cursor-pointer select-none"
+393                         onDoubleClick={() => onDblClickStudent(s)}
+394                         title="Duplo clique para editar"
+395                       >
+396                         {s.name}
+397                       </div>
+398                     </div>
+399                     <div className="px-1.5 py-2 text-center">
+400                       <label className="inline-flex items-center">
+401                         <span className="sr-only">Presença de {s.name}</span>
+402                         <input
+403                           type="checkbox"
+404                           className="h-4 w-4 accent-blue-600"
+405                           checked={!!presence[s.id]}
+406                           onChange={() => toggleStudent(s.id)}
+407                           aria-label={`Presença de ${s.name}`}
+408                         />
+409                       </label>
+410                     </div>
+411                   </div>
+412                 );
+413               })}
+414             </div>
+415           </div>
+416 
+417           {/* Barra de ações — abaixo da lista */}
+418           <div className="flex flex-wrap items-center gap-2">
+419             <button
+420               type="button"
+421               onClick={handleCreate}
+422               disabled={saving}
+423               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+424             >
+425               {saving ? "Salvando..." : "Criar chamada"}
+426             </button>
+427             <button
+428               type="button"
+429               onClick={() => setShowAdd((s) => !s)}
+430               className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+431             >
+432               Adicionar aluno
+433             </button>
+434           </div>
+435 
+436           {/* Importação (CSV/XLSX) */}
+437           <div className="rounded-2xl border">
+438             <div className="border-b px-4 py-3">
+439               <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+440               <p className="text-xs text-gray-600 mt-1">
+441                 <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+442               </p>
+443             </div>
+444 
+445             <div className="grid gap-3 px-4 py-4">
+446               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+447                 <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+448                 <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+449 
+450                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+451                   <input
+452                     type="file"
+453                     accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+454                     className="hidden"
+455                     id="students-file-input"
+456                     ref={fileRef}
+457                     onChange={(e) => {
+458                       const f = e.target.files?.[0] || null;
+459                       setUploadName(f ? f.name : null);
+460                       setUploadFile(f);
+461                     }}
+462                   />
+463                   <label
+464                     htmlFor="students-file-input"
+465                     className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+466                   >
+467                     Escolher arquivo
+468                   </label>
+469 
+470                   <button
+471                     type="button"
+472                     onClick={__handleImportSend}
+473                     disabled={!uploadFile || importing}
+474                     className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+475                   >
+476                     {importing ? "Enviando..." : "Enviar planilha"}
+477                   </button>
+478                 </div>
+479 
+480                 {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+481 
+482                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+483                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+484                     Baixar modelo CSV
+485                   </a>
+486                   <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+487                     Baixar modelo XLSX
+488                   </a>
+489                 </div>
+490               </div>
+491             </div>
+492           </div>
+493         </div>{/* /px-5 py-5 */}
+494       </section>
+495 
+496       {/* MODAL editar aluno */}
+497       {editId && (
+498         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+499           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+500             <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
+501             <div className="mt-3 grid gap-2">
+502               <label className="text-xs font-medium text-gray-700">Nome</label>
+503               <input
+504                 value={editName}
+505                 onChange={(e) => setEditName(e.target.value)}
+506                 className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+507                 placeholder="Nome do aluno"
+508               />
+509             </div>
+510             <div className="mt-4 flex items-center gap-2">
+511               <button
+512                 type="button"
+513                 onClick={handleEditSave}
+514                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+515               >
+516                 Salvar
+517               </button>
+518               <button
+519                 type="button"
+520                 onClick={() => { setEditId(null); setEditName(""); }}
+521                 className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+522               >
+523                 Cancelar
+524               </button>
+525               <button
+526                 type="button"
+527                 onClick={async () => {
+528                   if (!id || !editId) return;
+529                   if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+530                   try {
+531                     const res = await fetch(`/api/classes/${id}/students/${editId}`, { method: "DELETE" });
+532                     const data = await res.json().catch(() => ({}));
+533                     if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+534                     setStudents(prev => prev.filter(s => s.id !== editId));
+535                     setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+536                     setEditId(null);
+537                     setEditName("");
+538                   } catch (e: any) {
+539                     alert("Erro ao excluir aluno");
+540                     console.error(e);
+541                   }
+542                 }}
+543                 className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+544               >
+545                 Excluir aluno
+546               </button>
+547             </div>
+548           </div>
+549         </div>
+550       )}
+551     </main>
+552   );
+553 }
+
+===== app/classes/[id]/chamadas/ui.tsx =====
+1 "use client";
+2 import { useEffect, useMemo, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 type Item = { id: string; seq: number; title: string; createdAt: string };
+5 type Order = "asc" | "desc";
+6 
+7 export default function ChamadasClient({ classId }: { classId: string }) {
+8   const router = useRouter();
+9   const [items, setItems] = useState<Item[]>([]);
+10   const [loading, setLoading] = useState(true);
+11   const [order, setOrder] = useState<Order>("desc");
+12   const [error, setError] = useState<string | null>(null);
+13 
+14   async function load() {
+15     setLoading(true);
+16     const res = await fetch(`/api/classes/${classId}/chamadas?order=${order}`, { cache: "no-store" });
+17     if (!res.ok) { setError("Falha ao carregar chamadas"); setLoading(false); return; }
+18     const data = await res.json();
+19     setItems(data?.attendances ?? []);
+20     setLoading(false);
+21   }
+22   useEffect(() => { load(); /* eslint-disable-next-line */ }, [order, classId]);
+23 
+24   const sorted = useMemo(() => [...items].sort((a,b)=> order==="asc"? a.seq-b.seq : b.seq-a.seq), [items, order]);
+25 
+26   return (
+27     <div className="mt-6">
+28       <div className="flex flex-wrap items-center gap-3">
+29         <button
+30           onClick={() => router.push(`/classes/${classId}/chamadas/new`)}
+31           className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-brand-blue)] shadow-sm hover:shadow transition"
+32         >
+33           ➕ Nova chamada
+34         </button>
+35         <div className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur">
+36           <span className="opacity-90">Ordenar por ID:</span>
+37           <button onClick={()=>setOrder("asc")} className={`rounded-xl px-3 py-1 ${order==="asc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Crescente</button>
+38           <button onClick={()=>setOrder("desc")} className={`rounded-xl px-3 py-1 ${order==="desc"?"bg-white text-[var(--color-brand-blue)] shadow":"text-white/90 hover:bg-white/10"}`}>Decrescente</button>
+39         </div>
+40       </div>
+41 
+42       <div className="mt-5 bg-white/5 rounded-2xl p-1">
+43         {loading ? (
+44           <div className="p-6 text-white/90">Carregando chamadas...</div>
+45         ) : error ? (
+46           <div className="p-6 text-red-100">{error}</div>
+47         ) : sorted.length === 0 ? (
+48           <div className="p-6 text-white/90">Nenhuma chamada ainda. Crie a primeira.</div>
+49         ) : (
+50           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-2">
+51             {sorted.map((it) => (
+52               <li key={it.id}>
+53                 <button
+54                   className="w-full text-left rounded-xl bg-white px-4 py-3 shadow-sm hover:shadow transition border border-white/70"
+55                   onClick={() => router.push(`/classes/${classId}/chamadas/${it.seq}`)}
+56                 >
+57                   <div className="text-sm text-[var(--color-brand-blue)] font-semibold">ID #{it.seq}</div>
+58                   <div className="font-medium">{it.title}</div>
+59                 </button>
+60               </li>
+61             ))}
+62           </ul>
+63         )}
+64       </div>
+65     </div>
+66   );
+67 }
+
+===== app/classes/[id]/chamadas/[seq]/page.tsx =====
+1 import { prisma } from "@/lib/prisma";
+2 import { requireUser, getRole } from "@/lib/session";
+3 import { notFound, redirect } from "next/navigation";
+4 import ChamadaClient from "./ui";
+5 
+6 export default async function ChamadaPage({ params }: { params: Promise<{ id: string; seq: string }> }) {
+7   const { id, seq } = await params;
+8   const user = await requireUser();
+9   if (!user) redirect("/login");
+10 
+11   const role = await getRole(user.id, id);
+12   if (!role) notFound();               // sem acesso -> 404
+13   const canEdit = role === "PROFESSOR";
+14 
+15   const cls = await prisma.class.findFirst({
+16     where: { id },
+17     select: { id: true, name: true }
+18   });
+19   if (!cls) notFound();
+20 
+21   const attendance = await prisma.attendance.findUnique({
+22     where: { classId_seq: { classId: id, seq: Number(seq) } },
+23     select: { seq: true, title: true, lessonDate: true }
+24   });
+25   if (!attendance) notFound();
+26 
+27   const students = await prisma.student.findMany({
+28     where: { classId: id },
+29     orderBy: { createdAt: "desc" },
+30     select: { id: true, name: true, cpf: true, contact: true }
+31   });
+32 
+33   const presences = await prisma.attendancePresence.findMany({
+34     where: { classId: cls.id, seq: attendance.seq },
+35     select: { studentId: true, present: true }
+36   });
+37   const initialPresence = Object.fromEntries(presences.map(r => [r.studentId, !!r.present]));
+38   const initialLessonDate = attendance.lessonDate ? new Date(attendance.lessonDate).toISOString().slice(0,10) : "";
+39 
+40   return (
+41     <ChamadaClient
+42       classId={cls.id}
+43       className={cls.name}
+44       seq={attendance.seq}
+45       initialTitle={attendance.title}
+46       initialStudents={students}
+47       initialPresence={initialPresence}
+48       initialLessonDate={initialLessonDate}
+49       // UI pode ignorar; o back-end já bloqueia alteração
+50       // @ts-ignore
+51       readOnly={!canEdit}
+52     />
+53   );
+54 }
+
+===== app/classes/[id]/chamadas/[seq]/ui.tsx =====
+1 "use client";
+2 
+3 import Link from "next/link";
+4 import { useRouter } from "next/navigation";
+5 import { useEffect, useMemo, useRef, useState } from "react";
+6 
+7 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
+8 
+9 export default function EditChamadaClient({
+10   classId,
+11   className,
+12   seq,
+13   initialTitle,
+14   initialStudents,
+15   initialPresence,
+16   initialLessonDate,
+17   readOnly = false,
+18 } : {
+19   classId: string;
+20   className: string;
+21   seq: number;
+22   initialTitle: string;
+23   initialStudents: Student[];
+24   initialPresence?: Record<string, boolean>;
+25   initialLessonDate?: string; // YYYY-MM-DD
+26   readOnly?: boolean;
+27 }) {
+28   const router = useRouter();
+29 
+30   const [title, setTitle] = useState(initialTitle || "");
+31   const [students, setStudents] = useState<Student[]>(initialStudents || []);
+32   const [presence, setPresence] = useState<Record<string, boolean>>(initialPresence || {});
+33   const [lessonDate, setLessonDate] = useState<string>(initialLessonDate || "");
+34   const [saving, setSaving] = useState(false);
+35   const [deleting, setDeleting] = useState(false);
+36 
+37   // Adicionar aluno
+38   const [showAdd, setShowAdd] = useState(false);
+39   const [newName, setNewName] = useState("");
+40   const [newCpf, setNewCpf] = useState("");
+41   const [newContact, setNewContact] = useState("");
+42   const [adding, setAdding] = useState(false);
+43 
+44   // Import planilha
+45   const [uploadName, setUploadName] = useState<string | null>(null);
+46   const [uploadFile, setUploadFile] = useState<File | null>(null);
+47   const [importing, setImporting] = useState(false);
+48   const fileRef = useRef<HTMLInputElement | null>(null);
+49 
+50   // Editar aluno (modal)
+51   const [editId, setEditId] = useState<string | null>(null);
+52   const [editName, setEditName] = useState("");
+53 
+54   // Carrega presenças do servidor
+55   useEffect(() => {
+56     (async () => {
+57       try {
+58         const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, { cache: "no-store" });
+59         if (!res.ok) throw new Error();
+60         const data = await res.json();
+61         const map: Record<string, boolean> = {};
+62         if (Array.isArray(data?.rows)) {
+63           for (const r of data.rows) map[r.studentId] = !!r.present;
+64         } else {
+65           for (const s of initialStudents) map[s.id] = true;
+66         }
+67         setPresence(map);
+68       } catch {
+69         const map: Record<string, boolean> = {};
+70         for (const s of initialStudents) map[s.id] = true;
+71         setPresence(map);
+72       }
+73     })();
+74   }, [classId, seq, initialStudents]);
+75 
+76   function toggleStudent(studentId: string) {
+77     if (readOnly) return;
+78     setPresence((p) => ({ ...p, [studentId]: !p[studentId] }));
+79   }
+80   function setAll(v: boolean) {
+81     if (readOnly) return;
+82     const all: Record<string, boolean> = {};
+83     for (const s of students) all[s.id] = v;
+84     setPresence(all);
+85   }
+86 
+87   // Atualiza somente o nome do aluno (modal) — bloqueado em readOnly
+88   async function handleEditSave() {
+89     if (readOnly) return;
+90     if (!editId) return;
+91     const name = editName.trim();
+92     if (name.length < 2) { alert("Informe o nome (mínimo 2 caracteres)."); return; }
+93     try {
+94       const res = await fetch(`/api/classes/${classId}/students/${editId}`, {
+95         method: "PATCH",
+96         headers: { "content-type": "application/json" },
+97         body: JSON.stringify({ name }),
+98       });
+99       const data = await res.json().catch(() => ({}));
+100       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+101       setStudents((prev) => prev.map((s) => (s.id === editId ? { ...s, name } : s)));
+102       setEditId(null);
+103       setEditName("");
+104     } catch (e: any) {
+105       alert(e?.message || "Erro ao salvar");
+106       console.error(e);
+107     }
+108   }
+109   async function handleEditDelete() {
+110     if (readOnly) return;
+111     if (!editId) return;
+112     if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+113     try {
+114       const res = await fetch(`/api/classes/${classId}/students/${editId}`, { method: "DELETE" });
+115       const data = await res.json().catch(() => ({}));
+116       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+117       setStudents(prev => prev.filter(s => s.id !== editId));
+118       setPresence(prev => { const c = { ...prev }; delete c[editId!]; return c; });
+119       setEditId(null);
+120       setEditName("");
+121     } catch (e: any) {
+122       alert("Erro ao excluir aluno");
+123       console.error(e);
+124     }
+125   }
+126 
+127   // ⬇️ FALTAVA ESTA FUNÇÃO
+128   async function handleAddStudent() {
+129     if (readOnly) return;
+130     const name = newName.trim();
+131     const cpf = newCpf.trim();
+132     const contact = newContact.trim();
+133     if (name.length < 2) {
+134       alert("Informe o nome (mínimo 2 caracteres).");
+135       return;
+136     }
+137     setAdding(true);
+138     try {
+139       const body: any = { name };
+140       if (cpf.length) body.cpf = cpf;
+141       if (contact.length) body.contact = contact;
+142 
+143       const res = await fetch(`/api/classes/${classId}/students`, {
+144         method: "POST",
+145         headers: { "content-type": "application/json" },
+146         body: JSON.stringify(body)
+147       });
+148       let payload: any = null;
+149       try { payload = await res.json(); } catch {}
+150       if (!res.ok || !payload?.ok) {
+151         let msg = "Erro ao adicionar aluno";
+152         const e = payload?.error;
+153         if (typeof e === "string") msg = e;
+154         else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
+155         else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
+156         throw new Error(msg);
+157       }
+158 
+159       const st: Student = payload.student;
+160       setStudents((prev) => [st, ...prev]);
+161       setPresence((p) => ({ ...p, [st.id]: true }));
+162       setNewName(""); setNewCpf(""); setNewContact("");
+163       setShowAdd(false);
+164     } catch (e: any) {
+165       alert(e?.message || "Erro ao adicionar aluno");
+166       console.error(e);
+167     } finally {
+168       setAdding(false);
+169     }
+170   }
+171 
+172   // PUT da data — bloqueado em readOnly
+173   async function onChangeDate(v: string) {
+174     setLessonDate(v);
+175     if (readOnly) return;
+176     try {
+177       const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, {
+178         method: "PUT",
+179         headers: { "content-type": "application/json" },
+180         body: JSON.stringify({ lessonDate: v || undefined })
+181       });
+182       const d = await res.json().catch(() => ({}));
+183       if (!res.ok || d?.ok === false) throw new Error(d?.error || "Falha ao atualizar data");
+184     } catch (e: any) {
+185       alert(e?.message || "Erro ao atualizar data");
+186       console.error(e);
+187     }
+188   }
+189 
+190   // Salvar presenças — bloqueado em readOnly
+191   async function handleSave() {
+192     if (readOnly) return;
+193     setSaving(true);
+194     try {
+195       const presences = students.map((s) => ({ studentId: s.id, present: !!presence[s.id] }));
+196       const res = await fetch(`/api/classes/${classId}/chamadas/${seq}/presences`, {
+197         method: "POST",
+198         headers: { "content-type": "application/json" },
+199         body: JSON.stringify({ presences })
+200       });
+201       const d = await res.json();
+202       if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao salvar presenças");
+203       alert("Chamada atualizada com sucesso.");
+204     } catch (e: any) {
+205       alert(e?.message || "Erro ao salvar chamada");
+206       console.error(e);
+207     } finally {
+208       setSaving(false);
+209     }
+210   }
+211 
+212   // Excluir chamada — bloqueado em readOnly
+213   async function handleDelete() {
+214     if (readOnly) return;
+215     if (!confirm("Tem certeza que deseja excluir esta chamada? Esta ação não pode ser desfeita.")) return;
+216     setDeleting(true);
+217     try {
+218       const res = await fetch(`/api/classes/${classId}/chamadas/${seq}`, { method: "DELETE" });
+219       const d = await res.json().catch(() => ({}));
+220       if (!res.ok || !d?.ok) throw new Error(d?.error || "Falha ao excluir chamada");
+221       router.push(`/classes/${classId}/chamadas`);
+222     } catch (e: any) {
+223       alert(e?.message || "Erro ao excluir chamada");
+224       console.error(e);
+225     } finally {
+226       setDeleting(false);
+227     }
+228   }
+229 
+230   // Importar CSV/XLSX — bloqueado em readOnly
+231   async function __handleImportSend() {
+232     if (readOnly) return;
+233     if (!classId || !uploadFile) { alert("Selecione um arquivo CSV/XLSX antes de enviar."); return; }
+234     setImporting(true);
+235     try {
+236       const fd = new FormData();
+237       fd.append("file", uploadFile);
+238       const res = await fetch(`/api/classes/${classId}/students/import`, { method: "POST", body: fd });
+239       const data = await res.json().catch(() => ({}));
+240       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+241 
+242       const res2 = await fetch(`/api/classes/${classId}/students`, { cache: "no-store" });
+243       const data2 = await res2.json().catch(() => ({}));
+244       if (data2?.ok && Array.isArray(data2.students)) {
+245         setStudents(data2.students);
+246         setPresence((prev) => {
+247           const n: Record<string, boolean> = { ...(prev || {}) };
+248           for (const st of data2.students) {
+249             if (!(st.id in n)) n[st.id] = true;
+250           }
+251           return n;
+252         });
+253       }
+254       setUploadName(null);
+255       setUploadFile(null);
+256       if (fileRef.current) fileRef.current.value = "";
+257     } catch (e) {
+258       const __m = (e && (e as any).message) ? (e as any).message : String(e || "Erro ao importar planilha"); alert(__m);
+259       console.error(e);
+260     } finally {
+261       setImporting(false);
+262     }
+263   }
+264 
+265   const totalPresentes = useMemo(
+266     () => students.reduce((acc, s) => acc + (presence[s.id] ? 1 : 0), 0),
+267     [students, presence]
+268   );
+269 
+270   return (
+271     <main className="mx-auto max-w-5xl px-4 py-6">
+272       <nav className="mb-4 text-sm">
+273         <Link href={`/classes/${classId}/chamadas`} className="text-blue-700 hover:underline">
+274           Voltar para Chamadas
+275         </Link>
+276       </nav>
+277 
+278       <section className="rounded-2xl border bg-white/90 shadow-soft ring-1 ring-black/5">
+279         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+280           <div>
+281             <h1 className="text-xl font-semibold text-gray-900">
+282               {readOnly ? "Visualizar chamada" : "Editar chamada"} <span className="text-gray-500">#{seq}</span> — {className}
+283             </h1>
+284             <p className="text-sm text-gray-600">
+285               {readOnly ? "Somente visualização (gestor)." : "Atualize presenças, cadastre alunos e gerencie esta chamada."}
+286             </p>
+287           </div>
+288 
+289           {/* Título + Data */}
+290           <div className="flex flex-wrap items-end gap-4">
+291             <div className="text-right">
+292               <div className="text-xs text-gray-500">Nome da aula</div>
+293               <input
+294                 value={title}
+295                 onChange={(e) => setTitle(e.target.value)}
+296                 placeholder="Ex.: Aula 01 - Revisão"
+297                 className="mt-1 w-64 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+298                 disabled={readOnly}
+299               />
+300             </div>
+301             <div className="min-w-40">
+302               <div className="text-xs text-gray-500">Data</div>
+303               <input
+304                 type="date"
+305                 value={lessonDate}
+306                 onChange={(e) => onChangeDate(e.target.value)}
+307                 className="mt-1 w-40 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+308                 disabled={readOnly}
+309               />
+310             </div>
+311           </div>
+312         </div>
+313 
+314         <div className="space-y-5 px-5 py-5">
+315           {/* Adicionar aluno */}
+316           {!readOnly && (
+317             <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
+318               <div className="grid gap-3 md:grid-cols-3">
+319                 <div className="grid gap-1">
+320                   <label className="text-xs font-medium text-gray-700">Nome</label>
+321                   <input
+322                     value={newName}
+323                     onChange={(e) => setNewName(e.target.value)}
+324                     placeholder="Ex.: Maria Silva"
+325                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+326                   />
+327                 </div>
+328                 <div className="grid gap-1">
+329                   <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
+330                   <input
+331                     value={newCpf}
+332                     onChange={(e) => setNewCpf(e.target.value)}
+333                     placeholder="Somente números"
+334                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+335                   />
+336                 </div>
+337                 <div className="grid gap-1">
+338                   <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
+339                   <input
+340                     value={newContact}
+341                     onChange={(e) => setNewContact(e.target.value)}
+342                     placeholder="Ex.: (48) 99999-9999"
+343                     className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+344                   />
+345                 </div>
+346               </div>
+347               <div className="mt-3 flex items-center gap-2">
+348                 <button
+349                   type="button"
+350                   onClick={handleAddStudent}
+351                   disabled={adding || newName.trim().length < 2}
+352                   className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+353                 >
+354                   {adding ? "Adicionando..." : "Salvar aluno"}
+355                 </button>
+356                 <button
+357                   type="button"
+358                   onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
+359                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+360                 >
+361                   Cancelar
+362                 </button>
+363               </div>
+364             </div>
+365           )}
+366 
+367           {/* Lista de presença */}
+368           <div className="rounded-2xl overflow-hidden border">
+369             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+370               <div className="font-semibold">Lista de presença</div>
+371               <div className="text-sm">Presentes: <b>{totalPresentes}</b> / {students.length}</div>
+372             </div>
+373 
+374             <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+375               {!readOnly && (
+376                 <>
+377                   <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
+378                   <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+379                 </>
+380               )}
+381               {readOnly && <span className="text-blue-900/80">Modo visualização</span>}
+382             </div>
+383 
+384             <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
+385               <div className="px-1.5 py-2 text-center">#</div>
+386               <div className="px-3 py-2">Aluno</div>
+387               <div className="px-1.5 py-2 text-center"><span className="sr-only">Presença</span></div>
+388             </div>
+389 
+390             <div className="max-h-[60vh] overflow-auto">
+391               {students.length === 0 ? (
+392                 <div className="px-4 py-6 text-sm text-gray-600">Nenhum aluno cadastrado nesta turma.</div>
+393               ) : students.map((s, idx) => {
+394                 const isEven = idx % 2 === 0;
+395                 return (
+396                   <div
+397                     key={s.id}
+398                     className={[
+399                       "grid grid-cols-[32px_1fr_36px] items-center text-sm",
+400                       "border-b border-blue-100",
+401                       isEven ? "bg-blue-50/40" : "bg-white"
+402                     ].join(" ")}
+403                   >
+404                     <div className="px-1.5 py-2 text-center text-gray-600 tabular-nums">{idx + 1}</div>
+405                     <div className="px-3 py-2">
+406                       <div
+407                         className={`font-medium text-gray-900 ${readOnly ? "" : "cursor-pointer select-none"}`}
+408                         onDoubleClick={() => { if (!readOnly) { setEditId(s.id); setEditName(s.name); } }}
+409                         title={readOnly ? undefined : "Duplo clique para editar"}
+410                       >
+411                         {s.name}
+412                       </div>
+413                     </div>
+414                     <div className="px-1.5 py-2 text-center">
+415                       <label className="inline-flex items-center">
+416                         <span className="sr-only">Presença de {s.name}</span>
+417                         <input
+418                           type="checkbox"
+419                           className="h-4 w-4 accent-blue-600"
+420                           checked={!!presence[s.id]}
+421                           onChange={() => toggleStudent(s.id)}
+422                           aria-label={`Presença de ${s.name}`}
+423                           disabled={readOnly}
+424                         />
+425                       </label>
+426                     </div>
+427                   </div>
+428                 );
+429               })}
+430             </div>
+431           </div>
+432 
+433           {/* Barra de ações — abaixo da lista */}
+434           <div className="flex flex-wrap items-center gap-2">
+435             {!readOnly && (
+436               <>
+437                 <button
+438                   type="button"
+439                   onClick={handleSave}
+440                   disabled={saving}
+441                   className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
+442                 >
+443                   {saving ? "Salvando..." : "Salvar alterações"}
+444                 </button>
+445 
+446                 <button
+447                   type="button"
+448                   onClick={() => setShowAdd((s) => !s)}
+449                   className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+450                 >
+451                   Adicionar aluno
+452                 </button>
+453 
+454                 <button
+455                   type="button"
+456                   onClick={handleDelete}
+457                   disabled={deleting}
+458                   className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+459                 >
+460                   {deleting ? "Excluindo..." : "Excluir chamada"}
+461                 </button>
+462               </>
+463             )}
+464             {readOnly && (
+465               <span className="text-sm text-gray-600">Somente visualização</span>
+466             )}
+467           </div>
+468 
+469           {/* Importação (CSV/XLSX) — apenas professor */}
+470           {!readOnly && (
+471             <div className="rounded-2xl border">
+472               <div className="border-b px-4 py-3">
+473                 <h3 className="text-sm font-medium text-gray-900">Adicionar alunos por planilha</h3>
+474                 <p className="text-xs text-gray-600 mt-1">
+475                   <b>Apenas o campo "name" é obrigatório</b>. "cpf" e "contact" são opcionais.
+476                 </p>
+477               </div>
+478 
+479               <div className="grid gap-3 px-4 py-4">
+480                 <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50/40 px-6 py-8 text-center">
+481                   <p className="text-sm font-medium text-gray-800">Selecione seu arquivo CSV/XLSX</p>
+482                   <p className="text-xs text-gray-500">Formatos aceitos: .csv, .xlsx</p>
+483 
+484                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+485                     <input
+486                       type="file"
+487                       accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+488                       className="hidden"
+489                       id="students-file-input"
+490                       ref={fileRef}
+491                       onChange={(e) => {
+492                         const f = e.target.files?.[0] || null;
+493                         setUploadName(f ? f.name : null);
+494                         setUploadFile(f);
+495                       }}
+496                     />
+497                     <label
+498                       htmlFor="students-file-input"
+499                       className="cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+500                     >
+501                       Escolher arquivo
+502                     </label>
+503 
+504                     <button
+505                       type="button"
+506                       onClick={__handleImportSend}
+507                       disabled={!uploadFile || importing}
+508                       className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+509                     >
+510                       {importing ? "Enviando..." : "Enviar planilha"}
+511                     </button>
+512                   </div>
+513 
+514                   {uploadName && <div className="mt-2 text-xs text-gray-700">Selecionado: {uploadName}</div>}
+515 
+516                   <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+517                     <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.csv" target="_blank" rel="noreferrer">
+518                       Baixar modelo CSV
+519                     </a>
+520                     <a className="rounded-xl border px-3 py-1.5 hover:border-blue-500 hover:text-blue-600" href="/templates/students.xlsx" target="_blank" rel="noreferrer">
+521                       Baixar modelo XLSX
+522                     </a>
+523                   </div>
+524                 </div>
+525               </div>
+526             </div>
+527           )}
+528         </div>{/* /px-5 py-5 */}
+529       </section>
+530 
+531       {/* MODAL editar aluno — só quando edição estiver habilitada */}
+532       {(!readOnly && editId) && (
+533         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+534           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+535             <h2 className="text-lg font-semibold text-gray-900">Editar aluno</h2>
+536             <div className="mt-3 grid gap-2">
+537               <label className="text-xs font-medium text-gray-700">Nome</label>
+538               <input
+539                 value={editName}
+540                 onChange={(e) => setEditName(e.target.value)}
+541                 className="w-full rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+542                 placeholder="Nome do aluno"
+543               />
+544             </div>
+545             <div className="mt-4 flex items-center gap-2">
+546               <button
+547                 type="button"
+548                 onClick={handleEditSave}
+549                 className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+550               >
+551                 Salvar
+552               </button>
+553               <button
+554                 type="button"
+555                 onClick={() => { setEditId(null); setEditName(""); }}
+556                 className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+557               >
+558                 Cancelar
+559               </button>
+560               <button
+561                 type="button"
+562                 onClick={handleEditDelete}
+563                 className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+564               >
+565                 Excluir aluno
+566               </button>
+567             </div>
+568           </div>
+569         </div>
+570       )}
+571     </main>
+572   );
+573 }
+
+===== components/AddStudentModal.tsx =====
+[MISSING] components/AddStudentModal.tsx
+
+===== components/EditableStudentList.tsx =====
+[MISSING] components/EditableStudentList.tsx
+
+===== components/StudentImport.tsx =====
+[MISSING] components/StudentImport.tsx

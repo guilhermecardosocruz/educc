@@ -42,6 +42,8 @@
 │   │   │   │   │   └── [seq]/
 │   │   │   │   │       ├── route.ts
 │   │   │   │   │       └── route.ts.tmp
+│   │   │   │   ├── groups/
+│   │   │   │   │   └── route.ts
 │   │   │   │   ├── route.ts
 │   │   │   │   └── students/
 │   │   │   │       ├── import/
@@ -51,6 +53,12 @@
 │   │   │   │       └── [studentId]/
 │   │   │   │           ├── route.ts
 │   │   │   │           └── route.ts.tmp
+│   │   │   └── route.ts
+│   │   ├── class-groups/
+│   │   │   ├── [groupId]/
+│   │   │   │   ├── classes/
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── route.ts
 │   │   │   └── route.ts
 │   │   ├── images/
 │   │   │   └── generate/
@@ -110,6 +118,10 @@
 │   │   └── page.tsx
 │   ├── favicon.ico
 │   ├── globals.css
+│   ├── groups/
+│   │   └── [groupId]/
+│   │       ├── loading.tsx
+│   │       └── page.tsx
 │   ├── layout.tsx
 │   ├── manifest.webmanifest/
 │   │   └── route.ts
@@ -123,14 +135,17 @@
 ├── backups/
 │   ├── for-gpt/
 │   │   ├── API.txt
+│   │   ├── (app)-ClassCard.tsx.20251016-111811.bak
 │   │   ├── app_page.tsx..bak
 │   │   ├── AUTH_EDIT.txt
+│   │   ├── AUTH_LOOP_DEBUG.txt
 │   │   ├── BUG_IMPORT_DEBUG.txt
 │   │   ├── CHAMADAS_ACCESS.txt
 │   │   ├── CHAMADAS_EDIT_FULL.txt
 │   │   ├── CHAMADAS_EDIT.txt
 │   │   ├── chamada-seq-ui.tsx.20251009-162019.bak
 │   │   ├── chamada-seq-ui.tsx.20251009-162334.bak
+│   │   ├── CHAMADAS_NEW_FORM_DEBUG.txt
 │   │   ├── chamadas-new-page.20251013-020251.bak
 │   │   ├── chamadas-new-page.tsx.20251009-150218.bak
 │   │   ├── chamadas-new-page.tsx.20251009-151651.bak
@@ -144,23 +159,30 @@
 │   │   ├── chamadas-seq-page.20251013-020251.bak
 │   │   ├── chamadas-seq-route.20251013-020251.bak
 │   │   ├── chamadas-seq-ui.20251013-020251.bak
+│   │   ├── ClassCard.tsx.20251016-111811.bak
+│   │   ├── CODE_QUALITY_CONFIG.txt
 │   │   ├── COMPONENTS_TSX.txt
 │   │   ├── CONTENTS_EDIT.txt
 │   │   ├── conteudos-import-page.tsx.20251010-024639.bak
 │   │   ├── conteudos-new-page.tsx.20251010-024735.bak
 │   │   ├── conteudos-page.tsx.20251010-015202.bak
 │   │   ├── DASHBOARD_DEBUG.txt
+│   │   ├── DASHBOARD_DELETE_DEBUG.txt
 │   │   ├── EDIT_CORE_APP.txt
 │   │   ├── .env.local.bak
+│   │   ├── GROUPS_KICKOFF.txt
 │   │   ├── INDEX.txt
+│   │   ├── LOGIN_CARD_DEBUG.txt
 │   │   ├── LOGIN_EDIT.txt
 │   │   ├── move-date-below-title.patch
 │   │   ├── next.config.js..bak
 │   │   ├── next.config.mjs..bak
+│   │   ├── page.tsx.20251016-125414.bak
 │   │   ├── presences-route.ts.20251009-152133.bak
 │   │   ├── presences-route.ts.20251009-152309.bak
 │   │   ├── PROJECT_NO_SVG.txt
 │   │   ├── PROJECT_TS.txt
+│   │   ├── REDESIGN_FILES.txt
 │   │   ├── ROTAS.txt
 │   │   ├── ROUTES_ERRORS.txt
 │   │   ├── schema.prisma.20251009-145922.bak
@@ -168,19 +190,26 @@
 │   │   ├── schema.prisma.20251009-161505.bak
 │   │   ├── schema.prisma.20251009-161840.bak
 │   │   ├── schema.prisma.20251013-020251.bak
+│   │   ├── schema.prisma.before-backrelations.bak
+│   │   ├── schema.prisma.before-groups.bak
 │   │   ├── SHARE_ACCESS_CHECKLIST.txt
 │   │   ├── SHARE_CLAIM_EDIT.txt
+│   │   ├── SHARE_LINKS_INVITES.txt
 │   │   ├── students-route.ts.20251009-161006.bak
 │   │   ├── students-route.ts.20251009-161554.bak
 │   │   └── TREE.txt
 │   └── pre-fix/
 ├── components/
+│   ├── CreateClassModal.tsx
+│   ├── CreateGroupModal.tsx
 │   ├── DevSwKiller.tsx
+│   ├── LinkToGroupModal.tsx
 │   ├── LoginCard.tsx
 │   └── ShareClassModal.tsx
 ├── .env
 ├── .env.local
 ├── eslint.config.mjs
+├── .eslintrc.cjs
 ├── .gitignore
 ├── lib/
 │   ├── audit.ts
@@ -188,9 +217,7 @@
 │   ├── prisma.ts
 │   └── session.ts
 ├── middleware.ts
-├── next.config.js
 ├── next.config.mjs
-├── next.config.ts
 ├── next-env.d.ts
 ├── package.json
 ├── pnpm-builds.json
@@ -207,7 +234,7 @@
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
-│   ├── fallback-Evylg5dulxn6JIUGhFt2b.js
+│   ├── fallback-9LPzR3YU_w3Bg3nLW7Ntf.js
 │   ├── file.svg
 │   ├── globe.svg
 │   ├── icons/
@@ -226,7 +253,7 @@
 │   │   └── students.xlsx
 │   ├── vercel.svg
 │   ├── window.svg
-│   └── workbox-e1521e97.js
+│   └── workbox-c05e7c83.js
 ├── README.md
 ├── scripts/
 │   ├── backfill-classaccess.mjs
@@ -236,4 +263,4 @@
 ├── tsconfig.json
 └── tsconfig.tsbuildinfo
 
-65 directories, 171 files
+71 directories, 192 files
