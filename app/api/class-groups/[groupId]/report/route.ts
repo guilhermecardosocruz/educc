@@ -1,42 +1,95 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
-import { getGroupAttendanceSummary } from "@/lib/analytics/attendance";
-import { buildGroupReportPDF } from "@/lib/report/pdf";
+import "server-only";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { ClassSummary } from "@/lib/analytics/attendance";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export async function buildGroupReportPDF({
+  groupName,
+  from,
+  to,
+  summaries,
+}: {
+  groupName: string;
+  from: string;
+  to: string;
+  summaries: ClassSummary[];
+}): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
 
-export async function GET(req: NextRequest, { params }: { params: { groupId: string } }) {
-  try {
-    const me = await requireUser();
-    if (!me) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const pageMargin = 50;
+  const pageWidth = 595.28;   // A4 width in points
+  const pageHeight = 841.89;  // A4 height in points
 
-    const groupId = params.groupId;
-    const { searchParams } = new URL(req.url);
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
-    if (!from || !to) return NextResponse.json({ ok: false, error: "missing from/to" }, { status: 400 });
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // grupo precisa ser do usuário (padrão do teu projeto)
-    const g = await prisma.group.findFirst({
-      where: { id: groupId, userId: me.id },
-      select: { id: true, name: true },
-    });
-    if (!g) return NextResponse.json({ ok: false, error: "group not found" }, { status: 404 });
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - pageMargin;
 
-    const summaries = await getGroupAttendanceSummary(g.id, from, to);
-    const pdf = await buildGroupReportPDF({ groupName: g.name, from, to, summaries });
+  const lineHeight = 14;
+  const sectionGap = 10;
 
-    return new NextResponse(pdf, {
-      status: 200,
-      headers: {
-        "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="relatorio-grupo-${g.id}-${from}_a_${to}.pdf"`,
-        "cache-control": "no-store",
-      },
-    });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "internal error" }, { status: 500 });
+  function drawText(text: string, opts?: { bold?: boolean; size?: number; color?: { r:number; g:number; b:number } }) {
+    const size = opts?.size ?? 11;
+    const font = opts?.bold ? fontBold : fontRegular;
+    const color = opts?.color ? rgb(opts.color.r, opts.color.g, opts.color.b) : rgb(0, 0, 0);
+
+    // quebra de página simples
+    if (y - size < pageMargin) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      y = pageHeight - pageMargin;
+    }
+
+    page.drawText(text, { x: pageMargin, y: y - size, size, font, color });
+    y -= (size + 4);
   }
+
+  function drawDivider() {
+    // quebra de página simples
+    if (y - 8 < pageMargin) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      y = pageHeight - pageMargin;
+    }
+    page.drawLine({
+      start: { x: pageMargin, y: y - 4 },
+      end: { x: pageWidth - pageMargin, y: y - 4 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+    y -= 10;
+  }
+
+  // Cabeçalho
+  drawText(`Relatório de Presenças — Grupo: ${groupName}`, { bold: true, size: 16 });
+  drawText(`Período: ${from} a ${to}`, { size: 10, color: { r: 0.33, g: 0.33, b: 0.33 } });
+  y -= sectionGap;
+
+  if (!summaries.length) {
+    drawText("Não há turmas vinculadas a este grupo no período informado.", { size: 11 });
+  }
+
+  for (const s of summaries) {
+    drawText(`Turma: ${s.className}`, { bold: true, size: 13 });
+    drawText(`Aulas no período: ${s.lessonsCount}`, { size: 11, color: { r: 0.2, g: 0.2, b: 0.2 } });
+    drawText(`Média de presentes (abs.): ${s.avgPresentAbsolute}`, { size: 11, color: { r: 0.2, g: 0.2, b: 0.2 } });
+    drawText(`Média de presença (%): ${s.avgPresentPercent}%`, { size: 11, color: { r: 0.2, g: 0.2, b: 0.2 } });
+
+    y -= 4;
+    drawText("Top 5 mais faltantes:", { bold: true, size: 12 });
+
+    if (!s.topAbsentees.length) {
+      drawText("— Sem dados de faltas no período.", { size: 11, color: { r: 0.35, g: 0.35, b: 0.35 } });
+    } else {
+      let rank = 1;
+      for (const st of s.topAbsentees) {
+        drawText(`${rank}. ${st.name} — ${st.absences} falta(s)`, { size: 11 });
+        rank += 1;
+      }
+    }
+
+    y -= sectionGap;
+    drawDivider();
+  }
+
+  const bytes = await pdfDoc.save();
+  return Buffer.from(bytes);
 }
