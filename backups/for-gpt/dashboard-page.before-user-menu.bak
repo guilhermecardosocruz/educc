@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import ClassCard from "./ClassCard";
 import CreateGroupModal from "@/components/CreateGroupModal";
 import CreateClassModal from "@/components/CreateClassModal";
-import UserMenuButton from "@/components/UserMenuButton";
 
 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
 type Role = "PROFESSOR" | "GESTOR" | null;
@@ -112,7 +111,7 @@ export default function DashboardPage() {
           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
           <h1 className="text-2xl font-semibold">Olá {firstName}</h1>
         </div>
-        <UserMenuButton onLogout={onLogout} />
+        <button onClick={onLogout} className="btn-primary">Sair</button>
       </header>
 
       <section className="max-w-5xl mx-auto">
