@@ -14,11 +14,6 @@ export default function GestaoPage() {
             Gerar certificados
           </button>
         </div>
-        <div className="mb-4">
-          <button type="button" className="btn-primary" onClick={() => (window.location.href = '/gestao/certificados')}>
-            Gerar certificados
-          </button>
-        </div>
         <p className="text-gray-700">Aqui terá opções de gestão.</p>
       </section>
     </main>
