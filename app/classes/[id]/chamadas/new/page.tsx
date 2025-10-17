@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AddStudentModal from "@/components/AddStudentModal";
 
 type Student = { id: string; name: string; cpf: string | null; contact: string | null };
 
@@ -22,12 +23,8 @@ export default function NewCallPage() {
   const [presence, setPresence] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
 
-  // Adicionar aluno
+  // Modal "Adicionar aluno"
   const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newCpf, setNewCpf] = useState("");
-  const [newContact, setNewContact] = useState("");
-  const [adding, setAdding] = useState(false);
 
   // Import planilha
   const [uploadName, setUploadName] = useState<string | null>(null);
@@ -55,8 +52,6 @@ export default function NewCallPage() {
   }, [id]);
 
   // 2) Pré-preencher o "Nome da aula" com o título do conteúdo do próximo seq
-  //    - Busca a última chamada (order=desc) para obter nextSeq
-  //    - Busca a lista de conteúdos e pega o title onde seq === nextSeq
   useEffect(() => {
     (async () => {
       try {
@@ -84,7 +79,7 @@ export default function NewCallPage() {
           setTitle((prev) => (prev?.trim()?.length ? prev : match.title));
         }
       } catch {
-        // Silencia falhas de prefill: não deve travar a criação
+        // Silencia falhas de prefill
       }
     })();
   }, [id]);
@@ -98,11 +93,7 @@ export default function NewCallPage() {
     setPresence(all);
   }
 
-  // Modal editar (duplo clique no nome)
-  function onDblClickStudent(st: Student) {
-    setEditId(st.id);
-    setEditName(st.name);
-  }
+  // Editar aluno (nome) — válido no fluxo de "novo" também
   async function handleEditSave() {
     if (!id || !editId) return;
     const name = editName.trim();
@@ -143,51 +134,6 @@ export default function NewCallPage() {
     }
   }
 
-  // Adicionar aluno
-  async function handleAddStudent() {
-    if (!id) return;
-    const name = newName.trim();
-    const cpf = newCpf.trim();
-    const contact = newContact.trim();
-    if (name.length < 2) {
-      alert("Informe o nome (mínimo 2 caracteres).");
-      return;
-    }
-    setAdding(true);
-    try {
-      const body: any = { name };
-      if (cpf.length) body.cpf = cpf;
-      if (contact.length) body.contact = contact;
-
-      const res = await fetch(`/api/classes/${id}/students`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      let payload: any = null;
-      try { payload = await res.json(); } catch {}
-      if (!res.ok || !payload?.ok) {
-        let msg = "Erro ao adicionar aluno";
-        const e = payload?.error;
-        if (typeof e === "string") msg = e;
-        else if (e?.formErrors?.formErrors?.length) msg = e.formErrors.formErrors.join("\n");
-        else if (e?.fieldErrors) msg = JSON.stringify(e.fieldErrors);
-        throw new Error(msg);
-      }
-
-      const st: Student = payload.student;
-      setStudents((prev) => [st, ...prev]);
-      setPresence((p) => ({ ...p, [st.id]: true }));
-      setNewName(""); setNewCpf(""); setNewContact("");
-      setShowAdd(false);
-    } catch (e: any) {
-      alert(e?.message || "Erro ao adicionar aluno");
-      console.error(e);
-    } finally {
-      setAdding(false);
-    }
-  }
-
   // Importação CSV/XLSX
   async function __handleImportSend() {
     if (!id || !uploadFile) {
@@ -224,7 +170,7 @@ export default function NewCallPage() {
   async function handleCreate() {
     if (!id) return;
 
-    // Se título estiver vazio, confirmar com o professor (mantendo comportamento do backend)
+    // Se título estiver vazio, confirmar (mantém comportamento do backend)
     if (!title.trim()) {
       const ok = confirm("O nome da aula está vazio.\nDeseja continuar mesmo assim? O sistema poderá salvar como \"Chamada\".");
       if (!ok) return;
@@ -302,58 +248,6 @@ export default function NewCallPage() {
         </div>
 
         <div className="space-y-5 px-5 py-5">
-          {/* Adicionar aluno */}
-          {showAdd && (
-            <div className="rounded-2xl border bg-blue-50/40 px-4 py-3">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Nome</label>
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Ex.: Maria Silva"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">CPF (opcional)</label>
-                  <input
-                    value={newCpf}
-                    onChange={(e) => setNewCpf(e.target.value)}
-                    placeholder="Somente números"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs font-medium text-gray-700">Contato (opcional)</label>
-                  <input
-                    value={newContact}
-                    onChange={(e) => setNewContact(e.target.value)}
-                    placeholder="Ex.: (48) 99999-9999"
-                    className="w-full rounded-xl border border-blue-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddStudent}
-                  disabled={adding || newName.trim().length < 2}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {adding ? "Adicionando..." : "Salvar aluno"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowAdd(false); setNewName(""); setNewCpf(""); setNewContact(""); }}
-                  className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Lista de presença */}
           <div className="rounded-2xl overflow-hidden border">
             <div className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
@@ -364,6 +258,13 @@ export default function NewCallPage() {
             <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(true)}>Marcar todos</button>
               <button className="rounded-lg border border-blue-200 px-3 py-1 hover:bg-blue-100" onClick={() => setAll(false)}>Desmarcar todos</button>
+              <button
+                type="button"
+                onClick={() => setShowAdd(true)}
+                className="ml-auto rounded-xl border px-3 py-1.5 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
+              >
+                Adicionar aluno
+              </button>
             </div>
 
             <div className="grid grid-cols-[32px_1fr_36px] border-b border-blue-200 bg-blue-100/70 text-sm font-medium text-blue-900">
@@ -390,7 +291,7 @@ export default function NewCallPage() {
                     <div className="px-3 py-2">
                       <div
                         className="font-medium text-gray-900 cursor-pointer select-none"
-                        onDoubleClick={() => onDblClickStudent(s)}
+                        onDoubleClick={() => { setEditId(s.id); setEditName(s.name); }}
                         title="Duplo clique para editar"
                       >
                         {s.name}
@@ -423,13 +324,6 @@ export default function NewCallPage() {
               className="rounded-xl bg-[#0A66FF] px-4 py-2 text-sm font-medium text-white shadow hover:opacity-90 disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Criar chamada"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAdd((s) => !s)}
-              className="rounded-xl border px-3 py-2 text-sm font-medium hover:border-blue-400 hover:text-blue-700"
-            >
-              Adicionar aluno
             </button>
           </div>
 
@@ -547,6 +441,20 @@ export default function NewCallPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL adicionar aluno */}
+      {showAdd && (
+        <AddStudentModal
+          classId={String(id)}
+          open={showAdd}
+          onClose={() => setShowAdd(false)}
+          onAdded={(st) => {
+            setStudents((prev) => [st, ...prev]);
+            setPresence((p) => ({ ...(p || {}), [st.id]: true }));
+            setShowAdd(false);
+          }}
+        />
       )}
     </main>
   );
