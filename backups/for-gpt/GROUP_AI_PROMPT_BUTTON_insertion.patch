@@ -1,0 +1,29 @@
+diff --git a/app/groups/[groupId]/page.tsx b/app/groups/[groupId]/page.tsx
+index 5be80ca..a4845fa 100644
+--- a/app/groups/[groupId]/page.tsx
++++ b/app/groups/[groupId]/page.tsx
+@@ -1,9 +1,13 @@
+ 'use client';
+ 
+ import { useEffect, useState } from 'react';
++import { useEffect, useState } from 'react';
++import Link from 'next/link';
+ import Link from 'next/link';
+ import { useRouter, useParams } from 'next/navigation';
++import { useRouter, useParams } from 'next/navigation';
+ import GroupReportButton from '@/components/GroupReportButton';
++import GroupAIReportPromptButton from "@/components/GroupAIReportPromptButton";
+ 
+ type ClassLite = { id: string; name: string };
+ type GroupDetail = { id: string; name: string; classes: ClassLite[] };
+@@ -114,6 +118,10 @@ export default function GroupPage() {
+         <div className="card p-6">
+           <h2 className="font-semibold mb-3">Relatórios</h2>
+           <GroupReportButton groupId={group.id} />
++          <div className="mt-5 border-t pt-5">
++            <h3 className="font-medium mb-2">Assistente (GPT)</h3>
++            <GroupAIReportPromptButton groupId={group.id} />
++          </div>
+         </div>
+       </section>
+     </main>
