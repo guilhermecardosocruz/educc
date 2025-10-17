@@ -1,3 +1,4 @@
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { ClassSummary } from "@/lib/analytics/attendance";
 
 export async function buildGroupReportPDF({
@@ -10,47 +11,69 @@ export async function buildGroupReportPDF({
   from: string;
   to: string;
   summaries: ClassSummary[];
-}): Promise<Buffer> {
-  const { default: PDFDocument } = await import("pdfkit");
+}): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([595, 842]); // A4 size
+  const { height } = page.getSize();
 
-  const doc = new PDFDocument({ margin: 50 });
-  const chunks: Buffer[] = [];
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  let y = height - 50;
 
-  return await new Promise<Buffer>((resolve, reject) => {
-    doc.on("data", (c: Buffer) => chunks.push(c));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", (err) => reject(err));
-
-    doc.fontSize(16).text(`Relatório de Presenças — Grupo: ${groupName}`, { align: "left" });
-    doc.moveDown(0.3);
-    doc.fontSize(10).fillColor("#555").text(`Período: ${from} a ${to}`);
-    doc.moveDown();
-
-    summaries.forEach((s, idx) => {
-      if (idx > 0) doc.moveDown(0.5);
-      doc.fillColor("#000").fontSize(13).text(`Turma: ${s.className}`);
-      doc.moveDown(0.2);
-      doc.fontSize(10).fillColor("#333")
-        .text(`Aulas no período: ${s.lessonsCount}`)
-        .text(`Média de presentes (abs.): ${s.avgPresentAbsolute}`)
-        .text(`Média de presença (%): ${s.avgPresentPercent}%`);
-      doc.moveDown(0.4);
-      doc.fontSize(11).fillColor("#000").text("Top 5 mais faltantes:");
-      doc.moveDown(0.2);
-      doc.fontSize(10).fillColor("#333");
-      if (s.topAbsentees.length === 0) {
-        doc.text("— Sem dados de faltas no período.");
-      } else {
-        s.topAbsentees.forEach((st, i) => {
-          doc.text(`${i + 1}. ${st.name} — ${st.absences} falta(s)`);
-        });
-      }
-      doc.moveDown();
-      const x = doc.x;
-      const y = doc.y;
-      doc.moveTo(x, y).lineTo(545, y).strokeColor("#ddd").stroke();
-    });
-
-    doc.end();
+  page.drawText(`Relatório de Presenças — Grupo: ${groupName}`, {
+    x: 50,
+    y,
+    size: 16,
+    font,
+    color: rgb(0, 0, 0),
   });
+  y -= 25;
+
+  page.drawText(`Período: ${from} a ${to}`, {
+    x: 50,
+    y,
+    size: 10,
+    font,
+    color: rgb(0.3, 0.3, 0.3),
+  });
+  y -= 40;
+
+  for (const s of summaries) {
+    page.drawText(`Turma: ${s.className}`, {
+      x: 50,
+      y,
+      size: 13,
+      font,
+      color: rgb(0, 0, 0),
+    });
+    y -= 20;
+
+    page.drawText(`Aulas no período: ${s.lessonsCount}`, { x: 60, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Média de presentes (abs.): ${s.avgPresentAbsolute}`, { x: 60, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Média de presença (%): ${s.avgPresentPercent}%`, { x: 60, y, size: 10, font });
+    y -= 25;
+
+    page.drawText("Top 5 mais faltantes:", { x: 60, y, size: 11, font });
+    y -= 15;
+
+    if (s.topAbsentees.length === 0) {
+      page.drawText("— Sem dados de faltas no período.", { x: 70, y, size: 10, font });
+      y -= 20;
+    } else {
+      for (const [i, st] of s.topAbsentees.entries()) {
+        page.drawText(`${i + 1}. ${st.name} — ${st.absences} falta(s)`, {
+          x: 70,
+          y,
+          size: 10,
+          font,
+        });
+        y -= 15;
+      }
+    }
+    y -= 20;
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return pdfBytes;
 }
