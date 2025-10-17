@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -47,27 +45,17 @@ export default function UserMenuButton({ onLogout }: Props) {
       </button>
 
       {open && (
-        <div
-          className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-20 p-1"
-          role="menu"
-          aria-label="Menu do usuário"
-        >
-          <Link
-            href="/gestao"
-            className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 rounded"
-            onClick={() => setOpen(false)}
-            role="menuitem"
+        <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-20">
+          <button
+            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+            onClick={() => { setOpen(false); router.push("/gestao"); }}
           >
             Gestão
-          </Link>
-
+          </button>
           <div className="my-1 border-t" />
-
           <button
-            className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 rounded"
+            className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
             onClick={handleLogout}
-            role="menuitem"
-            type="button"
           >
             Sair
           </button>

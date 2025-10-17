@@ -1,13 +1,11 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
-
 export default function GestaoCertificadosPage() {
   return (
     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
-        <Link href="/gestao" className="btn-primary">Voltar</Link>
+        <a href="/gestao" className="btn-primary">Voltar</a>
       </header>
 
       <section className="card p-6">
