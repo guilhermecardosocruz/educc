@@ -9,30 +9,35 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, { params }: { params: { groupId: string } }) {
   try {
-    const me = await requireUser();
-    if (!me) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    const user = await requireUser();
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
 
     const groupId = params.groupId;
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-    if (!from || !to) return NextResponse.json({ ok: false, error: "missing from/to" }, { status: 400 });
+    if (!from || !to) {
+      return NextResponse.json({ ok: false, error: "missing from/to" }, { status: 400 });
+    }
 
-    // grupo precisa ser do usuário (padrão do teu projeto)
-    const g = await prisma.group.findFirst({
-      where: { id: groupId, userId: me.id },
+    const group = await prisma.classGroup.findUnique({
+      where: { id: groupId },
       select: { id: true, name: true },
     });
-    if (!g) return NextResponse.json({ ok: false, error: "group not found" }, { status: 404 });
+    if (!group) {
+      return NextResponse.json({ ok: false, error: "group not found" }, { status: 404 });
+    }
 
-    const summaries = await getGroupAttendanceSummary(g.id, from, to);
-    const pdf = await buildGroupReportPDF({ groupName: g.name, from, to, summaries });
+    const summaries = await getGroupAttendanceSummary(groupId, from, to);
+    const pdf = await buildGroupReportPDF({ groupName: group.name, from, to, summaries });
 
     return new NextResponse(pdf, {
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="relatorio-grupo-${g.id}-${from}_a_${to}.pdf"`,
+        "content-disposition": `attachment; filename="relatorio-grupo-${groupId}-${from}_a_${to}.pdf"`,
         "cache-control": "no-store",
       },
     });

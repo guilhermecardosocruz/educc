@@ -3,31 +3,38 @@ import { prisma } from "@/lib/prisma";
 export type ClassSummary = {
   classId: string;
   className: string;
-  lessonsCount: number;          // número de aulas no período
+  lessonsCount: number;          // nº de aulas no período
   avgPresentAbsolute: number;    // média de presentes (absoluto)
-  avgPresentPercent: number;     // média de presença (%) considerando tamanho da lista da turma na data da aula
-  topAbsentees: Array<{ studentId: string; name: string; absences: number }>; // top 5
+  avgPresentPercent: number;     // média de presença (%)
+  topAbsentees: Array<{ studentId: string; name: string; absences: number }>;
 };
 
+/**
+ * Busca as turmas do grupo via tabela de junção ClassGroupMembership (campo relacional 'cls'),
+ * exatamente como já é feito nas rotas existentes.
+ */
 export async function getGroupAttendanceSummary(groupId: string, from: string, to: string): Promise<ClassSummary[]> {
-  // Busca as turmas do grupo (assumindo relação Class.groupId)
-  const classes = await prisma.class.findMany({
+  // memberships com relação para a turma
+  const memberships = await prisma.classGroupMembership.findMany({
     where: { groupId },
-    select: { id: true, name: true },
+    select: { cls: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "asc" },
   });
 
+  const classes = memberships
+    .map((m) => m.cls)
+    .filter((c): c is { id: string; name: string } => !!c);
+
   const summaries: ClassSummary[] = [];
+
   for (const cls of classes) {
-    // Aulas (attendances) no período
+    // aulas no período
     const attendances = await prisma.attendance.findMany({
       where: {
         classId: cls.id,
-        lessonDate: {
-          gte: new Date(from),
-          lte: new Date(to),
-        },
+        lessonDate: { gte: new Date(from), lte: new Date(to) },
       },
-      select: { seq: true, classId: true },
+      select: { seq: true },
       orderBy: { seq: "asc" },
     });
 
@@ -43,18 +50,16 @@ export async function getGroupAttendanceSummary(groupId: string, from: string, t
       continue;
     }
 
-    // Lista de alunos atuais da turma (para divisor de % se necessário)
+    // lista atual de alunos (divisor padrão para %)
     const students = await prisma.student.findMany({
       where: { classId: cls.id },
       select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
     });
-    const studentMap = new Map(students.map(s => [s.id, s.name]));
+    const studentMap = new Map(students.map((s) => [s.id, s.name]));
 
-    // Presenças por aula
     let sumPresent = 0;
     let sumPercent = 0;
-
-    // Acúmulo de faltas por aluno
     const absencesCounter = new Map<string, number>();
 
     for (const att of attendances) {
@@ -63,13 +68,12 @@ export async function getGroupAttendanceSummary(groupId: string, from: string, t
         select: { studentId: true, present: true },
       });
 
-      const totalThisClassList = students.length > 0 ? students.length : presences.length; // fallback
+      const totalThisClassList = students.length > 0 ? students.length : presences.length;
       const presentCount = presences.reduce((acc, r) => acc + (r.present ? 1 : 0), 0);
 
       sumPresent += presentCount;
-      sumPercent += totalThisClassList > 0 ? (presentCount / totalThisClassList) : 0;
+      sumPercent += totalThisClassList > 0 ? presentCount / totalThisClassList : 0;
 
-      // faltas
       for (const r of presences) {
         if (!r.present) {
           absencesCounter.set(r.studentId, (absencesCounter.get(r.studentId) || 0) + 1);
@@ -81,9 +85,12 @@ export async function getGroupAttendanceSummary(groupId: string, from: string, t
     const avgPresentAbsolute = lessonsCount > 0 ? sumPresent / lessonsCount : 0;
     const avgPresentPercent = lessonsCount > 0 ? (sumPercent / lessonsCount) * 100 : 0;
 
-    // Top 5 faltantes
     const topAbsentees = Array.from(absencesCounter.entries())
-      .map(([studentId, absences]) => ({ studentId, name: studentMap.get(studentId) || "Aluno", absences }))
+      .map(([studentId, absences]) => ({
+        studentId,
+        name: studentMap.get(studentId) || "Aluno",
+        absences,
+      }))
       .sort((a, b) => b.absences - a.absences)
       .slice(0, 5);
 
