@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,47 @@ type Student = {
   observacoes?: string;
 };
 
+/** quebra texto por palavras respeitando largura máxima */
+function wrapTextByWidth({
+  text,
+  font,
+  size,
+  maxWidth,
+}: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = "";
+
+  for (const w of words) {
+    const test = line ? line + " " + w : w;
+    const width = font.widthOfTextAtSize(test, size);
+    if (width <= maxWidth) {
+      line = test;
+    } else {
+      if (line) lines.push(line);
+      // se palavra sozinha já excede, força quebra dura
+      if (font.widthOfTextAtSize(w, size) > maxWidth) {
+        // quebra a palavra em pedaços aproximados
+        let chunk = "";
+        for (const ch of w) {
+          const t2 = chunk + ch;
+          if (font.widthOfTextAtSize(t2, size) <= maxWidth) {
+            chunk = t2;
+          } else {
+            if (chunk) lines.push(chunk);
+            chunk = ch;
+          }
+        }
+        line = chunk;
+      } else {
+        line = w;
+      }
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -29,44 +70,73 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   for (const st of alunos) {
     if (!st?.aluno_nome) continue;
 
-    const page = pdf.addPage([595, 842]); // A4
+    // A4 paisagem
+    const page = pdf.addPage([842, 595]);
     const { width, height } = page.getSize();
 
-    // Moldura
+    const margin = 30;
+    const contentX = margin + 30;
+    const contentWidth = width - (contentX + margin + 30);
+    let y = height - 80;
+
+    // moldura
     page.drawRectangle({
-      x: 30, y: 30, width: width - 60, height: height - 60, borderColor: rgb(0,0,0), borderWidth: 1
+      x: margin,
+      y: margin,
+      width: width - margin * 2,
+      height: height - margin * 2,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
     });
 
-    // Título
-    page.drawText("CERTIFICADO", { x: 185, y: height - 120, size: 24, font: fontBold });
+    // título centralizado
+    const title = "CERTIFICADO";
+    const titleSize = 26;
+    const titleWidth = fontBold.widthOfTextAtSize(title, titleSize);
+    page.drawText(title, {
+      x: (width - titleWidth) / 2,
+      y,
+      size: titleSize,
+      font: fontBold,
+    });
+    y -= 36;
 
-    // Corpo
-    const nomeAluno = st.aluno_nome;
-    const evento = ev.nome;
+    const periodo =
+      ev.data_inicio || ev.data_fim
+        ? `${ev.data_inicio ?? ""}${ev.data_inicio && ev.data_fim ? " a " : ""}${ev.data_fim ?? ""}`
+        : "";
     const carga = st.carga_horaria || ev.carga_horaria || "";
-    const periodo = (ev.data_inicio || ev.data_fim)
-      ? `${ev.data_inicio ?? ""}${ev.data_inicio && ev.data_fim ? " a " : ""}${ev.data_fim ?? ""}`
-      : "";
 
+    // texto principal com wrap
     const linhas: string[] = [];
-    linhas.push(`Certificamos que ${nomeAluno} participou do evento "${evento}"`);
+    linhas.push(`Certificamos que ${st.aluno_nome} participou do evento "${ev.nome}"`);
     if (periodo) linhas.push(`realizado no período de ${periodo}`);
     if (carga) linhas.push(`com carga horária de ${carga}.`);
-    const corpo = linhas.join(", ");
+    const corpo = linhas.join(", ") + (linhas.length ? "" : ".");
 
-    page.drawText(corpo, { x: 60, y: height - 180, size: 12, font, lineHeight: 16 });
+    const bodySize = 14;
+    const bodyLH = 18;
+    const bodyLines = wrapTextByWidth({ text: corpo, font, size: bodySize, maxWidth: contentWidth });
 
-    // Rodapé
-    const local = ev.local ? `Local: ${ev.local}` : "";
-    const resp = ev.responsavel ? `Responsável: ${ev.responsavel}` : "";
-    page.drawText(local, { x: 60, y: 120, size: 10, font, color: rgb(0.2,0.2,0.2) });
-    page.drawText(resp,  { x: 60, y: 100, size: 10, font, color: rgb(0.2,0.2,0.2) });
+    for (const line of bodyLines) {
+      page.drawText(line, { x: contentX, y, size: bodySize, font });
+      y -= bodyLH;
+    }
+
+    // espaço para assinaturas ou selo (opcional)
+    y -= 24;
+
+    // rodapé
+    const footSize = 10;
+    const g = (t: string) => page.drawText(t, { x: contentX, y, size: footSize, font, color: rgb(0.2, 0.2, 0.2) });
+    if (ev.local) { g(`Local: ${ev.local}`); y -= 14; }
+    if (ev.responsavel) { g(`Responsável: ${ev.responsavel}`); y -= 14; }
   }
 
   return await pdf.save();
 }
 
-export async function POST(req: Request, { params }: { params: { id: string }}) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = await req.json().catch(() => ({}));
     const ev: EventPayload = body?.event;
@@ -78,7 +148,7 @@ export async function POST(req: Request, { params }: { params: { id: string }}) 
     if (!ev?.nome) {
       return NextResponse.json({ ok: false, error: "Nome do evento é obrigatório" }, { status: 400 });
     }
-    const validos = Array.isArray(alunos) ? alunos.filter(a => a?.aluno_nome) : [];
+    const validos = Array.isArray(alunos) ? alunos.filter((a) => a?.aluno_nome) : [];
     if (validos.length === 0) {
       return NextResponse.json({ ok: false, error: "Nenhum aluno válido fornecido" }, { status: 400 });
     }
