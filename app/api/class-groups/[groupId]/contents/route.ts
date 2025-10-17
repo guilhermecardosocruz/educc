@@ -4,8 +4,8 @@ import { requireUser } from "@/lib/session";
 
 /**
  * GET /api/class-groups/[groupId]/contents?from=YYYY-MM-DD&to=YYYY-MM-DD
- * Retorna, por turma do grupo, os conteúdos (seq espelhado) lecionados no período.
- * Cruza Attendance(lessonDate) com Content(seq).
+ * Retorna, por turma do grupo, os conteúdos lecionados no período (espelhando seq),
+ * cruzando Attendance(lessonDate) com Content(seq).
  */
 export async function GET(req: NextRequest, { params }: { params: { groupId: string } }) {
   try {
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: { groupId: str
     });
 
     const classes = memberships
-      .map(m => m.cls)
+      .map((m) => m.cls)
       .filter((c): c is { id: string; name: string } => !!c);
 
     const result: Array<{
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: { groupId: str
         seq: number;
         title: string;
         objetivos?: string | null;
-        desenvolvimento?: string | null;
+        desenvolvimento?: string | null; // mapeado de bodyHtml
         recursos?: string | null;
         bncc?: string | null;
         lessonDate?: string | null; // ISO
@@ -66,15 +66,25 @@ export async function GET(req: NextRequest, { params }: { params: { groupId: str
         continue;
       }
 
-      const seqs = atts.map(a => a.seq);
+      const seqs = atts.map((a) => a.seq);
+
+      // Busca conteúdos apenas com campos existentes no schema
       const conts = await prisma.content.findMany({
         where: { classId: cls.id, seq: { in: seqs } },
-        select: { seq: true, title: true, objetivos: true, desenvolvimento: true, recursos: true, bncc: true },
+        select: { seq: true, title: true, bodyHtml: true },
         orderBy: { seq: "asc" },
       });
 
-      const dateBySeq = new Map(atts.map(a => [a.seq, a.lessonDate?.toISOString() ?? null]));
-      const contents = conts.map(c => ({ ...c, lessonDate: dateBySeq.get(c.seq) ?? null }));
+      const dateBySeq = new Map(atts.map((a) => [a.seq, a.lessonDate?.toISOString() ?? null]));
+      const contents = conts.map((c) => ({
+        seq: c.seq,
+        title: c.title,
+        objetivos: null,
+        desenvolvimento: c.bodyHtml ?? null,
+        recursos: null,
+        bncc: null,
+        lessonDate: dateBySeq.get(c.seq) ?? null,
+      }));
 
       result.push({ classId: cls.id, className: cls.name, contents });
     }

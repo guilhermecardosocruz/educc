@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireUser } from '@/lib/session';
 
-export async function GET(_req: Request, ctx: { params: Promise<{ groupId: string }> }) {
-  const { groupId } = await ctx.params;
+export async function GET(_req: Request, { params }: { params: { groupId: string } }) {
+  const { groupId } = params;
   const me = await requireUser();
   if (!me) return NextResponse.json({ ok:false }, { status: 401 });
 

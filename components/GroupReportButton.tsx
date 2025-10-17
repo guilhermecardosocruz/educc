@@ -36,7 +36,6 @@ export default function GroupReportButton({ groupId }: { groupId: string }) {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener,noreferrer");
-      window.open(url, "_blank", "noopener,noreferrer");
       const a = document.createElement("a");
       a.href = url;
       a.download = `relatorio-grupo-${groupId}-${range.from}_a_${range.to}.pdf`;

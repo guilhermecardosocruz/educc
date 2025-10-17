@@ -1,10 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Link from 'next/link';
-import { useRouter, useParams } from 'next/navigation';
 import { useRouter, useParams } from 'next/navigation';
 import GroupReportButton from '@/components/GroupReportButton';
 import GroupAIReportPromptButton from "@/components/GroupAIReportPromptButton";
