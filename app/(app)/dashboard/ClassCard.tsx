@@ -38,7 +38,7 @@ export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filt
 
   async function onDelete() {
     if (!confirm("Tem certeza que deseja excluir esta turma? Esta ação não pode ser desfeita.")) return;
-    const res = await fetch(\`/api/classes/\${item.id}\`, { method: "DELETE" });
+    const res = await fetch(`/api/classes/${item.id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data?.ok === false) {
       alert(data?.error || "Erro ao excluir turma");
@@ -51,7 +51,7 @@ export default function ClassCard({ cls, filterGroupId }: { cls: ClassLite, filt
     const current = item.name || "";
     const next = prompt("Novo nome da turma:", current)?.trim();
     if (!next || next === current) return;
-    const res = await fetch(\`/api/classes/\${item.id}\`, {
+    const res = await fetch(`/api/classes/${item.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: next })
