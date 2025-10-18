@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type EventItem = {
@@ -115,7 +115,7 @@ export default function CertEventPage() {
 
   async function gerarPDF() {
     if (!ev.nome?.trim()) { alert("Preencha o nome do evento antes de gerar."); return; }
-    if (!students.length) { alert("Nenhum aluno carregado. Envie a planilha ou use alunos de exemplo."); return; }
+    if (!students.length) { alert("Nenhum aluno carregado. Envie a planilha primeiro."); return; }
     setGenerating(true);
     try {
       const res = await fetch(`/api/cert-events/${id}/generate`, {
@@ -139,45 +139,11 @@ export default function CertEventPage() {
     }
   }
 
-  // === DEMO: preencher todos os campos do formulário com exemplo ===
-  function preencherExemplo() {
-    const exemplo: EventItem = {
-      id,
-      nome: "WORKSHOP ETP: DA IDENTIFICAÇÃO DA DEMANDA À CONTRATAÇÃO",
-      local: "Escola Municipal de Governo de Criciúma",
-      cidade_uf: "Criciúma (SC)",
-      data_inicio: "2025-08-19",
-      data_fim: "2025-08-19",
-      carga_horaria: "08h",
-      texto_participante:
-        'Certificamos que [nome do participante] participou do Curso "WORKSHOP ETP: DA IDENTIFICAÇÃO DA DEMANDA À CONTRATAÇÃO", promovido e organizado pela Escola Municipal de Governo de Criciúma, realizado no período de 19/08/2025, com carga horária de [carga horária].',
-      texto_ministrante: "Ministrante: Equipe Técnica da Secretaria Municipal de Educação.",
-      texto_organizador: "Organizador: Escola Municipal de Governo de Criciúma.",
-      texto_verso:
-        "Conteúdos: Introdução ao ETP; Levantamento de Demandas; Critérios de Contratação; Estudos de Caso. Metodologia: Aula expositiva, atividades práticas e discussão orientada.",
-      logos: { prefeitura: true, escola: true, brasao: true },
-      sign1_name: "VÁGNER ESPÍNDOLA RODRIGUES",
-      sign1_role: "Prefeito Municipal",
-      sign2_name: "GEÓVANA BENEDET ZANETTE",
-      sign2_role: "Secretária Municipal de Educação",
-      responsavel: "Coordenação Pedagógica",
-      observacoes: "Certificado válido mediante verificação de presença.",
-    };
-    persist(exemplo);
-    alert("Campos preenchidos com exemplo.");
-  }
-
-  // === DEMO: carregar alunos de exemplo ===
-  function carregarAlunosExemplo() {
-    const exemplo: Student[] = [
-      { aluno_nome: "NATALIA BENITES", aluno_doc: "034.***.***-36", turma: "Turma A", carga_horaria: "08h" },
-      { aluno_nome: "JOÃO SILVA", aluno_doc: "123.456.789-00", turma: "Turma B", carga_horaria: "08h" },
-      { aluno_nome: "MARIA OLIVEIRA", aluno_doc: "987.654.321-00", turma: "Turma A", carga_horaria: "08h" },
-    ];
-    setStudents(exemplo);
-    try { localStorage.setItem(stKey(id), JSON.stringify(exemplo)); } catch {}
-    alert("Alunos de exemplo carregados.");
-  }
+  const codigoHint = (
+    <span className="text-xs text-gray-500">
+      Use os códigos: <code>[nome do participante]</code>, <code>[cpf]</code>, <code>[carga horária]</code>.
+    </span>
+  );
 
   return (
     <main className="min-h-screen p-6 lg:p-10 max-w-5xl mx-auto">
@@ -186,13 +152,7 @@ export default function CertEventPage() {
         <Link href="/gestao/certificados" className="btn-primary">Voltar</Link>
       </header>
 
-      {/* Ações rápidas do demo */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button className="btn-secondary" type="button" onClick={preencherExemplo}>Preencher com exemplo</button>
-        <button className="btn-secondary" type="button" onClick={carregarAlunosExemplo}>Carregar alunos de exemplo</button>
-      </div>
-
-      {/* FORM DO EVENTO */}
+      {/* FORM DO EVENTO (padrão para o certificado) */}
       <section className="card p-6 mb-6">
         <form onSubmit={onSave} className="grid gap-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -226,8 +186,8 @@ export default function CertEventPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Texto do participante (frente)</label>
-              <textarea className="input" rows={4} value={ev.texto_participante || ""} onChange={e => persist({ ...ev, texto_participante: e.target.value })} placeholder='Use códigos: [nome do participante], [cpf], [carga horária]' />
-              <span className="text-xs text-gray-500">Use os códigos: <code>[nome do participante]</code>, <code>[cpf]</code>, <code>[carga horária]</code>.</span>
+              <textarea className="input" rows={4} value={ev.texto_participante || ""} onChange={e => persist({ ...ev, texto_participante: e.target.value })} placeholder='Ex.: "Certificamos que [nome do participante] participou do curso ... com carga horária de [carga horária]."' />
+              {codigoHint}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Texto do ministrante (frente)</label>
@@ -260,6 +220,7 @@ export default function CertEventPage() {
                 Brasão do Município
               </label>
             </div>
+            <p className="text-xs text-gray-500 mt-1">Os logos já têm posições definidas no PDF.</p>
           </div>
 
           {/* Assinaturas */}
@@ -280,6 +241,18 @@ export default function CertEventPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mt-1">A terceira assinatura (Participante) usa o nome do aluno no PDF.</p>
+          </div>
+
+          {/* Extra */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Responsável</label>
+              <input className="input" value={ev.responsavel || ""} onChange={e => persist({ ...ev, responsavel: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Observações</label>
+              <input className="input" value={ev.observacoes || ""} onChange={e => persist({ ...ev, observacoes: e.target.value })} />
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">
@@ -312,7 +285,7 @@ export default function CertEventPage() {
         <p className="text-sm text-gray-600 mb-2">
           {students.length
             ? <>Alunos carregados: <strong>{students.length}</strong></>
-            : "Nenhum aluno carregado ainda. Baixe o modelo, preencha e envie a planilha — ou use \"Carregar alunos de exemplo\" acima."}
+            : "Nenhum aluno carregado ainda. Baixe o modelo, preencha e envie a planilha."}
         </p>
 
         {!!students.length && (
