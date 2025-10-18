@@ -89,8 +89,8 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   const pdf = await PDFDocument.create();
   // Tipografia: Times (mais próxima do modelo)
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
-  const fontBold = await pdf.embedFont(StandardFonts.TimesRomanBold);
-  const fontItalic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
+  const fontBold = await pdf.embedFont(StandardFonts.TimesBold);
+  const fontItalic = await pdf.embedFont(StandardFonts.TimesItalic);
 
   // Paleta
   const red = rgb(0.80, 0.00, 0.00);
