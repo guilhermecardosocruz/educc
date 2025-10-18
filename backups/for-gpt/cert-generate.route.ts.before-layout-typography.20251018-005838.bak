@@ -3,7 +3,7 @@ import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
 import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
 
 type EventPayload = {
   id: string;
@@ -27,7 +27,6 @@ type EventPayload = {
   qr_url?: string;
   autorizacao_texto?: string;
 };
-
 type Student = {
   aluno_nome: string;
   aluno_doc?: string;
@@ -36,18 +35,23 @@ type Student = {
   observacoes?: string;
 };
 
-/** Helpers -----------------------------------------------------------------------------------*/
-function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
+/** quebra texto por palavras respeitando largura máxima */
+function wrapTextByWidth({
+  text,
+  font,
+  size,
+  maxWidth,
+}: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
   const words = (text || "").trim().split(/\s+/);
   const lines: string[] = [];
   let line = "";
   for (const w of words) {
-    const t = line ? line + " " + w : w;
-    if (font.widthOfTextAtSize(t, size) <= maxWidth) {
-      line = t;
+    const test = line ? line + " " + w : w;
+    const width = font.widthOfTextAtSize(test, size);
+    if (width <= maxWidth) {
+      line = test;
     } else {
       if (line) lines.push(line);
-      // quebra palavra longa
       if (font.widthOfTextAtSize(w, size) > maxWidth) {
         let chunk = "";
         for (const ch of w) {
@@ -64,16 +68,18 @@ function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: P
   if (line) lines.push(line);
   return lines;
 }
-function drawCenteredText(page: any, text: string, y: number, size: number, font: PDFFont, color = rgb(0,0,0), characterSpacing?: number) {
+function drawCenteredText(page: any, text: string, y: number, size: number, font: PDFFont, color = rgb(0,0,0)) {
   const { width } = page.getSize();
-  const textWidth = font.widthOfTextAtSize(text, size) + (characterSpacing ? characterSpacing * text.length : 0);
-  page.drawText(text, { x: (width - textWidth) / 2, y, size, font, color, characterSpacing });
+  const textWidth = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x: (width - textWidth) / 2, y, size, font, color });
 }
 function drawRightAlignedText(page: any, text: string, y: number, size: number, font: PDFFont, rightMargin: number, color = rgb(0,0,0)) {
   const { width } = page.getSize();
   const textWidth = font.widthOfTextAtSize(text, size);
-  page.drawText(text, { x: Math.max(0, width - rightMargin - textWidth), y, size, font, color });
+  const x = Math.max(0, width - rightMargin - textWidth);
+  page.drawText(text, { x, y, size, font, color });
 }
+/** DD/MM/YYYY a partir de "YYYY-MM-DD" (ou retorna original se inválido) */
 function formatBR(iso?: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -94,32 +100,25 @@ function drawSignaturesBlock(page: any, font: PDFFont, fontBold: PDFFont, opts: 
   const usableWidth = width - leftMargin - rightMargin;
   const cols = titles.length;
   const colW = usableWidth / cols;
-
   const lineY = y;
-  const nameY = y - 15;
-  const roleY = y - 30;
-
+  const nameY = y - 14;
+  const roleY = y - 28;
   for (let i = 0; i < cols; i++) {
-    const padding = 16;
-    const x0 = leftMargin + i * colW + padding;
-    const x1 = leftMargin + (i + 1) * colW - padding;
+    const x0 = leftMargin + i * colW + 10;
+    const x1 = leftMargin + (i + 1) * colW - 10;
     page.drawLine({ start: { x: x0, y: lineY }, end: { x: x1, y: lineY }, thickness: 1, color: rgb(0,0,0) });
-
     const centerX = (x0 + x1) / 2;
+    const nameSize = 10;
+    const roleSize = 9;
     const name = titles[i].name;
     const role = titles[i].role;
-
-    const nameSize = 10.5;
-    const roleSize = 9.5;
     const nameWidth = fontBold.widthOfTextAtSize(name, nameSize);
     const roleWidth = font.widthOfTextAtSize(role, roleSize);
-
     page.drawText(name, { x: centerX - nameWidth / 2, y: nameY, size: nameSize, font: fontBold });
     page.drawText(role, { x: centerX - roleWidth / 2, y: roleY, size: roleSize, font });
   }
 }
 
-/** Gerador -----------------------------------------------------------------------------------*/
 async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -129,7 +128,6 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   const green = rgb(0.00, 0.45, 0.30);
   const gray = rgb(0.25, 0.25, 0.25);
 
-  // Assinaturas padrão (fallback)
   const s1name = (ev.sign1_name || "VÁGNER ESPÍNDOLA RODRIGUES").toUpperCase();
   const s1role = ev.sign1_role || "Prefeito Municipal";
   const s2name = (ev.sign2_name || "GEÓVANA BENEDET ZANETTE").toUpperCase();
@@ -138,53 +136,41 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   for (const st of alunos) {
     if (!st?.aluno_nome) continue;
 
-    /** =============================== FRENTE ================================== */
-    const page = pdf.addPage([842, 595]); // A4 paisagem
+    // === FRENTE ===
+    const page = pdf.addPage([842, 595]);
     const { width, height } = page.getSize();
 
     const margin = 36;
     const left = margin;
     const right = margin;
+    const contentX = left + 24;
+    const contentWidth = width - (contentX + right + 24);
+    let y = height - 72;
 
-    // Moldura fina
-    page.drawRectangle({
-      x: margin / 2,
-      y: margin / 2,
-      width: width - margin,
-      height: height - margin,
-      borderColor: rgb(0.75, 0.75, 0.75),
-      borderWidth: 0.8,
-    });
+    page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.8 });
+    page.drawRectangle({ x: width - 140, y: height - 40, width: 140, height: 40, color: red });
+    page.drawRectangle({ x: width - 95, y: height - 70, width: 95, height: 30, color: green });
 
-    // Elementos decorativos topo
-    page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
-    page.drawRectangle({ x: width - 105, y: height - 80, width: 105, height: 32, color: green });
+    drawCenteredText(page, "CERTIFICADO", y, 28, fontBold, red);
+    y -= 44;
 
-    // Título
-    let y = height - 92;
-    drawCenteredText(page, "CERTIFICADO", y, 30, fontBold, red, 1.6);
-    y -= 34;
-
-    // Nome + CPF (centralizado, negrito)
-    const nomeLinha = [st.aluno_nome.toUpperCase(), st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
-    drawCenteredText(page, nomeLinha, y, 14.5, fontBold);
+    const nomeLinha = [st.aluno_nome, st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
+    drawCenteredText(page, nomeLinha, y, 14, fontBold, rgb(0,0,0));
     y -= 28;
-
-    // Parágrafo principal
-    const contentX = left + 28;
-    const contentWidth = width - (contentX + right + 28);
 
     const inicioBR = formatBR(ev.data_inicio);
     const fimBR = formatBR(ev.data_fim);
-    const periodo = (inicioBR || fimBR) ? `${inicioBR ?? ""}${inicioBR && fimBR ? " a " : ""}${fimBR ?? ""}` : "";
+    const periodo = (inicioBR || fimBR)
+      ? `${inicioBR ?? ""}${inicioBR && fimBR ? " a " : ""}${fimBR ?? ""}`
+      : "";
     const carga = st.carga_horaria || ev.carga_horaria || "";
 
     let paragraph = ev.texto_participante?.trim();
     if (paragraph) {
-      paragraph = paragraph
-        .replace(/\[nome do participante\]/gi, st.aluno_nome)
-        .replace(/\[cpf\]/gi, st.aluno_doc || "")
-        .replace(/\[carga horária\]/gi, carga);
+      paragraph = paragraph.replace(/\[nome do participante\]/gi, st.aluno_nome)
+                           .replace(/\[cpf\]/gi, st.aluno_doc || "")
+                           .replace(/\[carga horária\]/gi, carga);
+      // se o texto de participante contiver datas, o autor escreve manualmente; não forçamos aqui
     } else {
       const partes: string[] = [];
       partes.push(`Certificamos que ${st.aluno_nome} participou do Curso "${(ev.nome || "Curso").toUpperCase()}",`);
@@ -201,18 +187,15 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       y -= bodyLH;
     }
 
-    // Data/Lugar à direita
-    y -= 18;
+    y -= 20;
     const dataFormatada = formatBR(ev.data_fim || ev.data_inicio);
     const cidade = ev.cidade_uf?.trim() || ev.local?.trim();
     const linhaData = (cidade && dataFormatada) ? `${cidade}, ${dataFormatada}.` : (dataFormatada ? `${dataFormatada}.` : "");
-    if (linhaData) {
-      drawRightAlignedText(page, linhaData, y, 12, font, right, gray);
-    }
+    if (linhaData) { drawRightAlignedText(page, linhaData, y, 12, font, right, gray); y -= 28; }
 
-    // Assinaturas ao rodapé
+    const signY = 120;
     drawSignaturesBlock(page, font, fontBold, {
-      y: 88,
+      y: signY,
       leftMargin: left,
       rightMargin: right,
       titles: [
@@ -222,87 +205,66 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       ],
     });
 
-    /** =============================== VERSO =================================== */
+    // === VERSO ===
     const page2 = pdf.addPage([842, 595]);
     const { width: w2, height: h2 } = page2.getSize();
     const m2 = 36;
     const left2 = m2;
     const right2 = m2;
-
-    // moldura
-    page2.drawRectangle({
-      x: m2 / 2, y: m2 / 2,
-      width: w2 - m2, height: h2 - m2,
-      borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.8
-    });
-
-    // Áreas e coordenadas base
-    const topY = h2 - 72;                // topo do conteúdo
-    const authBaseY = 86;                // faixa de autorização acima do rodapé
-    const qrBoxSize = 120;               // tamanho do QR
-    const qrX = left2 + 10;
-    const qrY = m2 + 16;                 // canto inferior esquerdo
-
-    // Conteúdo Programático (texto_verso) no topo-esquerda
-    let y2 = topY;
     const contentX2 = left2 + 24;
     const contentW2 = w2 - (contentX2 + right2 + 24);
+    let y2 = h2 - 64;
 
-    if (ev.texto_verso && ev.texto_verso.trim()) {
-      // Se começar com "Conteúdo" destacamos título
-      const t = ev.texto_verso.trim();
-      const lines = t.split(/\r?\n/).filter(Boolean);
-      if (lines.length) {
-        // Se a primeira linha parece título, desenha em bold
-        if (/conte[uú]do/i.test(lines[0])) {
-          page2.drawText(lines[0], { x: contentX2, y: y2, size: 12.5, font: fontBold });
-          y2 -= 18;
-          lines.slice(1).forEach((L) => {
-            for (const ln of wrapTextByWidth({ text: L, font, size: 12, maxWidth: contentW2 })) {
-              page2.drawText(ln, { x: contentX2, y: y2, size: 12, font });
-              y2 -= 16;
-            }
-          });
-        } else {
-          for (const ln of wrapTextByWidth({ text: t, font, size: 12, maxWidth: contentW2 })) {
-            page2.drawText(ln, { x: contentX2, y: y2, size: 12, font });
-            y2 -= 16;
-          }
-        }
-      }
+    page2.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 0.6 });
+
+    if (ev.qr_url && ev.qr_url.trim()) {
+      const qrPng = await QRCode.toBuffer(ev.qr_url.trim(), { type: "png", width: 120, margin: 1 });
+      const qrImg = await pdf.embedPng(qrPng);
+      const qrSize = 120;
+      const qrX = left2 + 8;
+      const qrY = y2 - qrSize + 8;
+      page2.drawRectangle({ x: qrX - 6, y: qrY - 6, width: qrSize + 12, height: qrSize + 12, borderColor: red, borderWidth: 1.2 });
+      page2.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
     }
 
-    // TOTAL no topo-direita
     const totalCarga = (st.carga_horaria || ev.carga_horaria || "").trim();
     if (totalCarga) {
-      drawRightAlignedText(page2, `TOTAL: ${totalCarga}`, topY + 4, 12.5, fontBold, right2);
+      drawRightAlignedText(page2, `TOTAL: ${totalCarga}`, y2 - 6, 12.5, fontBold, right2, rgb(0,0,0));
     }
+    y2 -= 28;
 
-    // QR no canto inferior esquerdo com borda
-    if (ev.qr_url && ev.qr_url.trim()) {
-      const qrPng = await QRCode.toBuffer(ev.qr_url.trim(), { type: "png", width: qrBoxSize, margin: 1 });
-      const qrImg = await pdf.embedPng(qrPng);
-      page2.drawRectangle({ x: qrX - 6, y: qrY - 6, width: qrBoxSize + 12, height: qrBoxSize + 12, borderColor: red, borderWidth: 1.2 });
-      page2.drawImage(qrImg, { x: qrX, y: qrY, width: qrBoxSize, height: qrBoxSize });
-    }
-
-    // Faixa de autorização (central) e responsável (direita), ambos acima do rodapé
-    const autorizacao = (ev.autorizacao_texto || "").trim();
-    if (autorizacao) {
-      for (const ln of wrapTextByWidth({ text: autorizacao, font, size: 12, maxWidth: w2 * 0.7 })) {
-        drawCenteredText(page2, ln, authBaseY, 12, font);
-        // não quebramos múltiplas linhas para manter a faixa compacta
+    if (ev.autorizacao_texto && ev.autorizacao_texto.trim()) {
+      for (const line of wrapTextByWidth({ text: ev.autorizacao_texto.trim(), font, size: 12, maxWidth: contentW2 })) {
+        drawCenteredText(page2, line, y2, 12, font, rgb(0,0,0));
+        y2 -= 16;
       }
     }
+
     if (ev.responsavel && ev.responsavel.trim()) {
-      drawRightAlignedText(page2, `Responsável: ${ev.responsavel.trim()}`, authBaseY - 16, 12, font, right2);
+      drawRightAlignedText(page2, `Responsável: ${ev.responsavel.trim()}`, y2 - 4, 12, font, right2, rgb(0,0,0));
+      y2 -= 24;
+    }
+
+    if (ev.texto_verso && ev.texto_verso.trim()) {
+      const vSize = 12;
+      const vLH = 16;
+      for (const line of wrapTextByWidth({ text: ev.texto_verso.trim(), font, size: vSize, maxWidth: contentW2 })) {
+        page2.drawText(line, { x: contentX2, y: y2, size: vSize, font });
+        y2 -= vLH;
+        if (y2 < 64) {
+          const cont = pdf.addPage([842, 595]);
+          cont.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 0.6 });
+          // reset para nova página
+          (page2 as any) = cont;
+          y2 = h2 - 64;
+        }
+      }
     }
   }
 
   return await pdf.save();
 }
 
-/** Handler HTTP -----------------------------------------------------------------------------*/
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = await req.json().catch(() => ({}));
