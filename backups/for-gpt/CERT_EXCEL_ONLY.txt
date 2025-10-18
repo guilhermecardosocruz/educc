@@ -1,0 +1,53 @@
+
+===== public/templates/cert-events.xlsx =====
+[MISSING] public/templates/cert-events.xlsx
+
+===== lib/excel.ts =====
+[MISSING] lib/excel.ts
+
+===== lib/zip.ts =====
+[MISSING] lib/zip.ts
+
+===== app/api/cert-events/route.ts =====
+[MISSING] app/api/cert-events/route.ts
+
+===== app/api/cert-events/[id]/route.ts =====
+[MISSING] app/api/cert-events/[id]/route.ts
+
+===== app/api/cert-events/[id]/template/route.ts =====
+[MISSING] app/api/cert-events/[id]/template/route.ts
+
+===== app/api/cert-events/[id]/students/route.ts =====
+[MISSING] app/api/cert-events/[id]/students/route.ts
+
+===== app/api/cert-events/[id]/generate/route.ts =====
+[MISSING] app/api/cert-events/[id]/generate/route.ts
+
+===== components/CertEventModal.tsx =====
+[MISSING] components/CertEventModal.tsx
+
+===== components/CertEventItem.tsx =====
+[MISSING] components/CertEventItem.tsx
+
+===== app/gestao/certificados/page.tsx =====
+1 export const dynamic = "force-dynamic";
+2 
+3 import Link from "next/link";
+4 
+5 export default function GestaoCertificadosPage() {
+6   return (
+7     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+8       <header className="flex items-center justify-between mb-6">
+9         <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
+10         <Link href="/gestao" className="btn-primary">Voltar</Link>
+11       </header>
+12 
+13       <section className="card p-6">
+14         <p className="text-gray-700">aqui terá requisitos para gerar certificados</p>
+15       </section>
+16     </main>
+17   );
+18 }
+
+===== app/gestao/certificados/[id]/page.tsx =====
+[MISSING] app/gestao/certificados/[id]/page.tsx

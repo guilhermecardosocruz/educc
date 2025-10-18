@@ -13,7 +13,7 @@ export async function buildGroupReportPDF({
   summaries: ClassSummary[];
 }): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([842, 595]); // A4 landscape
+  const page = pdfDoc.addPage([595, 842]); // A4 size
   const { height } = page.getSize();
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);

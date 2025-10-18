@@ -1,0 +1,265 @@
+
+===== app/layout.tsx =====
+1 import "./globals.css";
+2 export { metadata, viewport } from "./metadata";
+3 
+4 export default function RootLayout({ children }: { children: React.ReactNode }) {
+5   return (
+6     <html lang="pt-BR"><head><link rel="manifest" href="/manifest.webmanifest" /></head><body>{children}</body>
+7     </html>
+8   );
+9 }
+
+===== app/page.tsx =====
+1 import LoginCard from "@/components/LoginCard";
+2 export const dynamic = "force-dynamic";
+3 
+4 export default function Home() {
+5   return (
+6     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
+7       {/* Hero azul (desktop) */}
+8       <section className="hidden lg:flex items-center justify-center bg-brand-blue text-white">
+9         <div className="max-w-xl px-8">
+10           <h2 className="text-4xl font-extrabold leading-tight">
+11             Bem-vindo(a) ao <br /> EDUCC
+12           </h2>
+13           <p className="mt-4 text-white/90">
+14             Sua plataforma educacional — instalável como app (PWA) em Web, Android e iOS.
+15           </p>
+16         </div>
+17       </section>
+18 
+19       {/* Coluna do formulário */}
+20       <section className="flex items-center justify-center p-6 lg:p-12">
+21         <LoginCard />
+22       </section>
+23     </main>
+24   );
+25 }
+
+===== app/dashboard/page.tsx =====
+1 "use client";
+2 import { useEffect, useRef, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 import ClassCard from "./ClassCard";
+5 import CreateGroupModal from "@/components/CreateGroupModal";
+6 import CreateClassModal from "@/components/CreateClassModal";
+7 
+8 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
+9 type Role = "PROFESSOR" | "GESTOR" | null;
+10 type ClassItem = { id: string; name: string; createdAt: string; roleForMe: Role };
+11 type GroupItem = { id: string; name: string; classesCount?: number };
+12 
+13 export default function DashboardPage() {
+14   const router = useRouter();
+15   const [me, setMe] = useState<Me | null>(null);
+16   const [loading, setLoading] = useState(true);
+17   const [classes, setClasses] = useState<ClassItem[]>([]);
+18   const [groups, setGroups] = useState<GroupItem[]>([]);
+19   const [classModalOpen, setClassModalOpen] = useState(false);
+20   const [groupModalOpen, setGroupModalOpen] = useState(false);
+21 
+22   const [groupMenuOpen, setGroupMenuOpen] = useState<string | null>(null);
+23   const groupMenuRef = useRef<HTMLDivElement | null>(null);
+24 
+25   useEffect(() => {
+26     function onDocClick(e: MouseEvent) {
+27       if (!groupMenuRef.current) return;
+28       if (!groupMenuRef.current.contains(e.target as Node)) {
+29         setGroupMenuOpen(null);
+30       }
+31     }
+32     document.addEventListener("mousedown", onDocClick);
+33     return () => document.removeEventListener("mousedown", onDocClick);
+34   }, []);
+35 
+36   async function fetchMe() {
+37     const res = await fetch("/api/auth/me", { cache: "no-store" });
+38     if (res.status === 401) { router.push("/login"); return; }
+39     const data: Me = await res.json();
+40     setMe(data);
+41   }
+42   async function fetchClasses() {
+43     const res = await fetch("/api/classes", { cache: "no-store" });
+44     if (res.status === 401) { router.push("/login"); return; }
+45     const data = await res.json();
+46     if (data?.ok) setClasses(data.classes || []);
+47   }
+48   async function fetchGroups() {
+49     const res = await fetch("/api/class-groups", { cache: "no-store" });
+50     if (res.status === 401) { router.push("/login"); return; }
+51     const data = await res.json().catch(()=> ({}));
+52     if (res.ok && data?.ok) {
+53       setGroups((data.groups || []).map((g: any) => ({
+54         id: g.id, name: g.name, classesCount: g.classesCount ?? g.count ?? undefined
+55       })));
+56     }
+57   }
+58 
+59   useEffect(() => {
+60     (async () => {
+61       await fetchMe();
+62       await fetchClasses();
+63       await fetchGroups();
+64       setLoading(false);
+65     })();
+66     // eslint-disable-next-line react-hooks/exhaustive-deps
+67   }, []);
+68 
+69   async function onLogout() {
+70     await fetch("/api/auth/logout", { method: "POST" });
+71     router.push("/login");
+72   }
+73 
+74   async function onDeleteGroup(g: GroupItem) {
+75     if (!confirm(`Excluir o grupo "${g.name}"?`)) return;
+76     const res = await fetch(`/api/class-groups/${g.id}`, { method: "DELETE" });
+77     const data = await res.json().catch(()=> ({}));
+78     if (!res.ok || data?.ok === false) {
+79       alert(data?.error || "Erro ao excluir grupo");
+80       return;
+81     }
+82     await fetchGroups();
+83   }
+84 
+85   async function onRenameGroup(g: GroupItem) {
+86     const next = prompt("Novo nome do grupo:", g.name)?.trim();
+87     if (!next || next === g.name) return;
+88     const res = await fetch(`/api/class-groups/${g.id}`, {
+89       method: "PATCH",
+90       headers: { "content-type": "application/json" },
+91       body: JSON.stringify({ name: next })
+92     });
+93     const data = await res.json().catch(()=> ({}));
+94     if (!res.ok || data?.ok === false) {
+95       alert(data?.error || "Erro ao renomear grupo");
+96       return;
+97     }
+98     await fetchGroups();
+99   }
+100 
+101   if (loading) {
+102     return <main className="min-h-screen flex items-center justify-center">Carregando...</main>;
+103   }
+104 
+105   const firstName = me?.user?.name?.split(" ")[0] || "Olá";
+106 
+107   return (
+108     <main className="min-h-screen p-6 lg:p-10">
+109       <header className="flex items-center justify-between max-w-5xl mx-auto mb-6">
+110         <div className="flex items-center gap-3">
+111           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+112           <h1 className="text-2xl font-semibold">Olá {firstName}</h1>
+113         </div>
+114         <button onClick={onLogout} className="btn-primary">Sair</button>
+115       </header>
+116 
+117       <section className="max-w-5xl mx-auto">
+118         <div className="card p-6 mb-6">
+119           <div className="flex flex-col gap-3">
+120             <button type="button" className="btn-primary" onClick={() => setClassModalOpen(true)}>
+121               Criar turma
+122             </button>
+123             <button type="button" className="btn-primary" onClick={() => setGroupModalOpen(true)}>
+124               Criar grupo de turma
+125             </button>
+126             <p className="text-xs text-gray-500">
+127               Você poderá informar o nome e (no grupo) escolher as turmas desejadas.
+128             </p>
+129           </div>
+130         </div>
+131 
+132         <div className="card p-6 mb-6">
+133           <h3 className="font-semibold mb-4">Meus grupos</h3>
+134           {groups.length === 0 ? (
+135             <p className="text-gray-600">Nenhum grupo criado ainda.</p>
+136           ) : (
+137             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" ref={groupMenuRef}>
+138               {groups.map((g) => (
+139                 <div key={g.id} className="relative">
+140                   <a
+141                     href={`/groups/${g.id}`}
+142                     className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition"
+143                   >
+144                     <div className="flex items-center justify-between gap-3">
+145                       <h3 className="font-semibold truncate">{g.name}</h3>
+146                       {typeof g.classesCount === "number" ? (
+147                         <span className="text-xs text-gray-500">{g.classesCount} turma(s)</span>
+148                       ) : null}
+149                     </div>
+150                   </a>
+151 
+152                   <div className="absolute top-2 right-2">
+153                     <button
+154                       type="button"
+155                       className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
+156                       aria-label="Mais ações"
+157                       onClick={(e) => {
+158                         e.preventDefault(); e.stopPropagation();
+159                         setGroupMenuOpen((id) => (id === g.id ? null : g.id));
+160                       }}
+161                     >
+162                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+163                         <circle cx="12" cy="5" r="1.8" />
+164                         <circle cx="12" cy="12" r="1.8" />
+165                         <circle cx="12" cy="19" r="1.8" />
+166                       </svg>
+167                     </button>
+168 
+169                     {groupMenuOpen === g.id && (
+170                       <div
+171                         className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-20"
+172                         onClick={(e) => { e.stopPropagation(); }}
+173                       >
+174                         <button
+175                           className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+176                           onClick={() => { setGroupMenuOpen(null); onRenameGroup(g); }}
+177                         >
+178                           Renomear
+179                         </button>
+180                         <div className="my-1 border-t" />
+181                         <button
+182                           className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+183                           onClick={() => { setGroupMenuOpen(null); onDeleteGroup(g); }}
+184                         >
+185                           Excluir
+186                         </button>
+187                       </div>
+188                     )}
+189                   </div>
+190                 </div>
+191               ))}
+192             </div>
+193           )}
+194         </div>
+195 
+196         <div className="card p-6">
+197           <h3 className="font-semibold mb-4">Minhas turmas</h3>
+198           {classes.length === 0 ? (
+199             <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
+200           ) : (
+201             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+202               {classes.map((c) => (
+203                 <ClassCard key={c.id} cls={c as any} />
+204               ))}
+205             </div>
+206           )}
+207         </div>
+208       </section>
+209 
+210       <CreateClassModal open={classModalOpen} onOpenChange={setClassModalOpen} onCreated={fetchClasses} />
+211       <CreateGroupModal
+212         open={groupModalOpen}
+213         onOpenChange={setGroupModalOpen}
+214         classes={classes.map(c => ({ id: c.id, name: c.name }))}
+215         onCreated={fetchGroups}
+216       />
+217     </main>
+218   );
+219 }
+
+===== components/UserMenuButton.tsx =====
+[MISSING] components/UserMenuButton.tsx
+
+===== app/gestao/page.tsx =====
+[MISSING] app/gestao/page.tsx

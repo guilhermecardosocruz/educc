@@ -12,6 +12,14 @@
 │   │   │   │   └── route.ts
 │   │   │   └── register/
 │   │   │       └── route.ts
+│   │   ├── cert-events/
+│   │   │   └── [id]/
+│   │   │       ├── generate/
+│   │   │       │   └── route.ts
+│   │   │       ├── students/
+│   │   │       │   └── route.ts
+│   │   │       └── template/
+│   │   │           └── route.ts
 │   │   ├── classes/
 │   │   │   ├── [id]/
 │   │   │   │   ├── access/
@@ -59,6 +67,8 @@
 │   │   │   │   ├── analytics/
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── classes/
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── contents/
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── report/
 │   │   │   │   │   └── route.ts
@@ -121,6 +131,12 @@
 │   │   ├── ClassCard.tsx
 │   │   └── page.tsx
 │   ├── favicon.ico
+│   ├── gestao/
+│   │   ├── certificados/
+│   │   │   ├── [id]/
+│   │   │   │   └── page.tsx
+│   │   │   └── page.tsx
+│   │   └── page.tsx
 │   ├── globals.css
 │   ├── groups/
 │   │   └── [groupId]/
@@ -146,6 +162,8 @@
 │   │   ├── AUTH_EDIT.txt
 │   │   ├── AUTH_LOOP_DEBUG.txt
 │   │   ├── BUG_IMPORT_DEBUG.txt
+│   │   ├── CERT_EXCEL_BASE.txt
+│   │   ├── CERT_EXCEL_ONLY.txt
 │   │   ├── CHAMADAS_ACCESS.txt
 │   │   ├── CHAMADAS_EDIT_FULL.txt
 │   │   ├── CHAMADAS_EDIT.txt
@@ -178,14 +196,23 @@
 │   │   ├── conteudos-page.tsx.20251010-015202.bak
 │   │   ├── DASHBOARD_DEBUG.txt
 │   │   ├── DASHBOARD_DELETE_DEBUG.txt
+│   │   ├── dashboard-page.before-user-menu.bak
 │   │   ├── EDIT_CORE_APP.txt
 │   │   ├── .env.local.bak
+│   │   ├── gestao-certificados.before-full-rewrite.bak
+│   │   ├── gestao-page.before-certificates.bak
+│   │   ├── gestao-page.before-full-rewrite.bak
+│   │   ├── GESTAO_PAGES.txt
+│   │   ├── GROUP_AI_PROMPT_BUTTON_insertion.patch
+│   │   ├── GROUP_REPORT_EDIT.txt
 │   │   ├── GROUP_REPORT_FILES.txt
+│   │   ├── GROUP_REPORT_FIX_DEBUG.txt
 │   │   ├── GROUPS_KICKOFF.txt
 │   │   ├── INDEX.txt
 │   │   ├── lib-report-pdf.20251017-001951.bak
 │   │   ├── LOGIN_CARD_DEBUG.txt
 │   │   ├── LOGIN_EDIT.txt
+│   │   ├── MIDDLEWARE_DEBUG.txt
 │   │   ├── move-date-below-title.patch
 │   │   ├── next.config.js..bak
 │   │   ├── next.config.mjs.20251017-001218.bak
@@ -215,7 +242,10 @@
 │   │   ├── SHARE_LINKS_INVITES.txt
 │   │   ├── students-route.ts.20251009-161006.bak
 │   │   ├── students-route.ts.20251009-161554.bak
-│   │   └── TREE.txt
+│   │   ├── TREE.txt
+│   │   ├── UserMenuButton.before-full-rewrite.bak
+│   │   ├── USER_MENU_GESTAO.txt
+│   │   └── USER_MENU_PWA_DEBUG.txt
 │   └── pre-fix/
 ├── components/
 │   ├── AddStudentModal.tsx
@@ -223,10 +253,12 @@
 │   ├── CreateGroupModal.tsx
 │   ├── DateRangePicker.tsx
 │   ├── DevSwKiller.tsx
+│   ├── GroupAIReportPromptButton.tsx
 │   ├── GroupReportButton.tsx
 │   ├── LinkToGroupModal.tsx
 │   ├── LoginCard.tsx
-│   └── ShareClassModal.tsx
+│   ├── ShareClassModal.tsx
+│   └── UserMenuButton.tsx
 ├── .env
 ├── .env.local
 ├── eslint.config.mjs
@@ -237,6 +269,7 @@
 │   │   └── attendance.ts
 │   ├── audit.ts
 │   ├── email.ts
+│   ├── excel.ts
 │   ├── prisma.ts
 │   ├── report/
 │   │   └── pdf.ts
@@ -259,7 +292,7 @@
 │   │   └── migration_lock.toml
 │   └── schema.prisma
 ├── public/
-│   ├── fallback-trd59lcs7K9Mmlk5qSbN5.js
+│   ├── fallback-y4R1s8RgMvQoQXCmVlr9N.js
 │   ├── file.svg
 │   ├── globe.svg
 │   ├── icons/
@@ -288,4 +321,4 @@
 ├── tsconfig.json
 └── tsconfig.tsbuildinfo
 
-75 directories, 213 files
+84 directories, 237 files

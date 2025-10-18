@@ -1,0 +1,161 @@
+
+===== app/gestao/certificados/page.tsx =====
+1 export const dynamic = "force-dynamic";
+2 
+3 import Link from "next/link";
+4 
+5 export default function GestaoCertificadosPage() {
+6   return (
+7     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+8       <header className="flex items-center justify-between mb-6">
+9         <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
+10         <Link href="/gestao" className="btn-primary">Voltar</Link>
+11       </header>
+12 
+13       <section className="card p-6">
+14         <p className="text-gray-700">aqui terá requisitos para gerar certificados</p>
+15       </section>
+16     </main>
+17   );
+18 }
+
+===== package.json =====
+1 {
+2   "name": "educc",
+3   "private": true,
+4   "version": "0.1.0",
+5   "type": "module",
+6   "scripts": {
+7     "dev": "next dev",
+8     "build": "pnpm prisma:gen && pnpm prisma:deploy && next build",
+9     "start": "next start",
+10     "typecheck": "tsc --noEmit",
+11     "prisma:gen": "prisma generate",
+12     "prisma:deploy": "prisma migrate deploy",
+13     "prisma:push": "prisma db push",
+14     "prisma:studio": "prisma studio",
+15     "postinstall": "prisma generate",
+16     "icons": "tsx scripts/generate-icons.ts",
+17     "lint": "eslint ."
+18   },
+19   "dependencies": {
+20     "@prisma/client": "^6.17.1",
+21     "bcryptjs": "^3.0.2",
+22     "csv-parse": "^6.1.0",
+23     "lucide-react": "^0.453.0",
+24     "next": "15.0.0",
+25     "next-pwa": "^5.6.0",
+26     "pdf-lib": "^1.17.1",
+27     "react": "19.0.0",
+28     "react-dom": "19.0.0",
+29     "zod": "^3.23.8"
+30   },
+31   "devDependencies": {
+32     "@babel/core": "^7.28.4",
+33     "@eslint/eslintrc": "^3.3.1",
+34     "@tailwindcss/postcss": "4.1.14",
+35     "@types/node": "^22.7.4",
+36     "@types/react": "^19.0.0",
+37     "babel-loader": "^10.0.0",
+38     "eslint": "^9.37.0",
+39     "eslint-config-next": "^15.5.4",
+40     "prisma": "^6.17.1",
+41     "sharp": "^0.34.4",
+42     "tailwindcss": "4.1.14",
+43     "tsx": "^4.20.6",
+44     "typescript": "^5.6.3",
+45     "xlsx": "^0.18.5"
+46   },
+47   "engines": {
+48     "node": "^20"
+49   },
+50   "pnpm": {
+51     "allowScripts": {
+52       "@prisma/client": true,
+53       "prisma": true,
+54       "@tailwindcss/oxide": true,
+55       "sharp": true
+56     }
+57   }
+58 }
+
+===== lib/report/pdf.ts =====
+1 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+2 import { ClassSummary } from "@/lib/analytics/attendance";
+3 
+4 export async function buildGroupReportPDF({
+5   groupName,
+6   from,
+7   to,
+8   summaries,
+9 }: {
+10   groupName: string;
+11   from: string;
+12   to: string;
+13   summaries: ClassSummary[];
+14 }): Promise<Uint8Array> {
+15   const pdfDoc = await PDFDocument.create();
+16   const page = pdfDoc.addPage([595, 842]); // A4 size
+17   const { height } = page.getSize();
+18 
+19   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+20   let y = height - 50;
+21 
+22   page.drawText(`Relatório de Presenças — Grupo: ${groupName}`, {
+23     x: 50,
+24     y,
+25     size: 16,
+26     font,
+27     color: rgb(0, 0, 0),
+28   });
+29   y -= 25;
+30 
+31   page.drawText(`Período: ${from} a ${to}`, {
+32     x: 50,
+33     y,
+34     size: 10,
+35     font,
+36     color: rgb(0.3, 0.3, 0.3),
+37   });
+38   y -= 40;
+39 
+40   for (const s of summaries) {
+41     page.drawText(`Turma: ${s.className}`, {
+42       x: 50,
+43       y,
+44       size: 13,
+45       font,
+46       color: rgb(0, 0, 0),
+47     });
+48     y -= 20;
+49 
+50     page.drawText(`Aulas no período: ${s.lessonsCount}`, { x: 60, y, size: 10, font });
+51     y -= 15;
+52     page.drawText(`Média de presentes (abs.): ${s.avgPresentAbsolute}`, { x: 60, y, size: 10, font });
+53     y -= 15;
+54     page.drawText(`Média de presença (%): ${s.avgPresentPercent}%`, { x: 60, y, size: 10, font });
+55     y -= 25;
+56 
+57     page.drawText("Top 5 mais faltantes:", { x: 60, y, size: 11, font });
+58     y -= 15;
+59 
+60     if (s.topAbsentees.length === 0) {
+61       page.drawText("— Sem dados de faltas no período.", { x: 70, y, size: 10, font });
+62       y -= 20;
+63     } else {
+64       for (const [i, st] of s.topAbsentees.entries()) {
+65         page.drawText(`${i + 1}. ${st.name} — ${st.absences} falta(s)`, {
+66           x: 70,
+67           y,
+68           size: 10,
+69           font,
+70         });
+71         y -= 15;
+72       }
+73     }
+74     y -= 20;
+75   }
+76 
+77   const pdfBytes = await pdfDoc.save();
+78   return pdfBytes;
+79 }

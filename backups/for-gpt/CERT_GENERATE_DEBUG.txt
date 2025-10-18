@@ -1,0 +1,546 @@
+
+===== lib/report/pdf.ts =====
+1 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+2 import { ClassSummary } from "@/lib/analytics/attendance";
+3 
+4 export async function buildGroupReportPDF({
+5   groupName,
+6   from,
+7   to,
+8   summaries,
+9 }: {
+10   groupName: string;
+11   from: string;
+12   to: string;
+13   summaries: ClassSummary[];
+14 }): Promise<Uint8Array> {
+15   const pdfDoc = await PDFDocument.create();
+16   const page = pdfDoc.addPage([595, 842]); // A4 size
+17   const { height } = page.getSize();
+18 
+19   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+20   let y = height - 50;
+21 
+22   page.drawText(`Relatório de Presenças — Grupo: ${groupName}`, {
+23     x: 50,
+24     y,
+25     size: 16,
+26     font,
+27     color: rgb(0, 0, 0),
+28   });
+29   y -= 25;
+30 
+31   page.drawText(`Período: ${from} a ${to}`, {
+32     x: 50,
+33     y,
+34     size: 10,
+35     font,
+36     color: rgb(0.3, 0.3, 0.3),
+37   });
+38   y -= 40;
+39 
+40   for (const s of summaries) {
+41     page.drawText(`Turma: ${s.className}`, {
+42       x: 50,
+43       y,
+44       size: 13,
+45       font,
+46       color: rgb(0, 0, 0),
+47     });
+48     y -= 20;
+49 
+50     page.drawText(`Aulas no período: ${s.lessonsCount}`, { x: 60, y, size: 10, font });
+51     y -= 15;
+52     page.drawText(`Média de presentes (abs.): ${s.avgPresentAbsolute}`, { x: 60, y, size: 10, font });
+53     y -= 15;
+54     page.drawText(`Média de presença (%): ${s.avgPresentPercent}%`, { x: 60, y, size: 10, font });
+55     y -= 25;
+56 
+57     page.drawText("Top 5 mais faltantes:", { x: 60, y, size: 11, font });
+58     y -= 15;
+59 
+60     if (s.topAbsentees.length === 0) {
+61       page.drawText("— Sem dados de faltas no período.", { x: 70, y, size: 10, font });
+62       y -= 20;
+63     } else {
+64       for (const [i, st] of s.topAbsentees.entries()) {
+65         page.drawText(`${i + 1}. ${st.name} — ${st.absences} falta(s)`, {
+66           x: 70,
+67           y,
+68           size: 10,
+69           font,
+70         });
+71         y -= 15;
+72       }
+73     }
+74     y -= 20;
+75   }
+76 
+77   const pdfBytes = await pdfDoc.save();
+78   return pdfBytes;
+79 }
+
+===== app/api/cert-events/[id]/generate/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
+3 
+4 export const dynamic = "force-dynamic";
+5 
+6 type EventPayload = {
+7   id: string;
+8   nome: string;
+9   descricao?: string;
+10   data_inicio?: string;
+11   data_fim?: string;
+12   local?: string;
+13   carga_horaria?: string;
+14   responsavel?: string;
+15 };
+16 type Student = {
+17   aluno_nome: string;
+18   aluno_doc?: string;
+19   turma?: string;
+20   carga_horaria?: string;
+21   observacoes?: string;
+22 };
+23 
+24 /** quebra texto por palavras respeitando largura máxima */
+25 function wrapTextByWidth({
+26   text,
+27   font,
+28   size,
+29   maxWidth,
+30 }: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
+31   const words = text.split(/\s+/);
+32   const lines: string[] = [];
+33   let line = "";
+34 
+35   for (const w of words) {
+36     const test = line ? line + " " + w : w;
+37     const width = font.widthOfTextAtSize(test, size);
+38     if (width <= maxWidth) {
+39       line = test;
+40     } else {
+41       if (line) lines.push(line);
+42       // se palavra sozinha já excede, força quebra dura
+43       if (font.widthOfTextAtSize(w, size) > maxWidth) {
+44         // quebra a palavra em pedaços aproximados
+45         let chunk = "";
+46         for (const ch of w) {
+47           const t2 = chunk + ch;
+48           if (font.widthOfTextAtSize(t2, size) <= maxWidth) {
+49             chunk = t2;
+50           } else {
+51             if (chunk) lines.push(chunk);
+52             chunk = ch;
+53           }
+54         }
+55         line = chunk;
+56       } else {
+57         line = w;
+58       }
+59     }
+60   }
+61   if (line) lines.push(line);
+62   return lines;
+63 }
+64 
+65 async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promise<Uint8Array> {
+66   const pdf = await PDFDocument.create();
+67   const font = await pdf.embedFont(StandardFonts.Helvetica);
+68   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+69 
+70   for (const st of alunos) {
+71     if (!st?.aluno_nome) continue;
+72 
+73     // A4 paisagem
+74     const page = pdf.addPage([842, 595]);
+75     const { width, height } = page.getSize();
+76 
+77     const margin = 30;
+78     const contentX = margin + 30;
+79     const contentWidth = width - (contentX + margin + 30);
+80     let y = height - 80;
+81 
+82     // moldura
+83     page.drawRectangle({
+84       x: margin,
+85       y: margin,
+86       width: width - margin * 2,
+87       height: height - margin * 2,
+88       borderColor: rgb(0, 0, 0),
+89       borderWidth: 1,
+90     });
+91 
+92     // título centralizado
+93     const title = "CERTIFICADO";
+94     const titleSize = 26;
+95     const titleWidth = fontBold.widthOfTextAtSize(title, titleSize);
+96     page.drawText(title, {
+97       x: (width - titleWidth) / 2,
+98       y,
+99       size: titleSize,
+100       font: fontBold,
+101     });
+102     y -= 36;
+103 
+104     const periodo =
+105       ev.data_inicio || ev.data_fim
+106         ? `${ev.data_inicio ?? ""}${ev.data_inicio && ev.data_fim ? " a " : ""}${ev.data_fim ?? ""}`
+107         : "";
+108     const carga = st.carga_horaria || ev.carga_horaria || "";
+109 
+110     // texto principal com wrap
+111     const linhas: string[] = [];
+112     linhas.push(`Certificamos que ${st.aluno_nome} participou do evento "${ev.nome}"`);
+113     if (periodo) linhas.push(`realizado no período de ${periodo}`);
+114     if (carga) linhas.push(`com carga horária de ${carga}.`);
+115     const corpo = linhas.join(", ") + (linhas.length ? "" : ".");
+116 
+117     const bodySize = 14;
+118     const bodyLH = 18;
+119     const bodyLines = wrapTextByWidth({ text: corpo, font, size: bodySize, maxWidth: contentWidth });
+120 
+121     for (const line of bodyLines) {
+122       page.drawText(line, { x: contentX, y, size: bodySize, font });
+123       y -= bodyLH;
+124     }
+125 
+126     // espaço para assinaturas ou selo (opcional)
+127     y -= 24;
+128 
+129     // rodapé
+130     const footSize = 10;
+131     const g = (t: string) => page.drawText(t, { x: contentX, y, size: footSize, font, color: rgb(0.2, 0.2, 0.2) });
+132     if (ev.local) { g(`Local: ${ev.local}`); y -= 14; }
+133     if (ev.responsavel) { g(`Responsável: ${ev.responsavel}`); y -= 14; }
+134   }
+135 
+136   return await pdf.save();
+137 }
+138 
+139 export async function POST(req: Request, { params }: { params: { id: string } }) {
+140   try {
+141     const body = await req.json().catch(() => ({}));
+142     const ev: EventPayload = body?.event;
+143     const alunos: Student[] = body?.students || [];
+144 
+145     if (!ev?.id || ev.id !== params.id) {
+146       return NextResponse.json({ ok: false, error: "Evento inválido" }, { status: 400 });
+147     }
+148     if (!ev?.nome) {
+149       return NextResponse.json({ ok: false, error: "Nome do evento é obrigatório" }, { status: 400 });
+150     }
+151     const validos = Array.isArray(alunos) ? alunos.filter((a) => a?.aluno_nome) : [];
+152     if (validos.length === 0) {
+153       return NextResponse.json({ ok: false, error: "Nenhum aluno válido fornecido" }, { status: 400 });
+154     }
+155 
+156     const pdfBytes = await buildCertificatesPDF(ev, validos);
+157 
+158     return new NextResponse(pdfBytes, {
+159       status: 200,
+160       headers: {
+161         "Content-Type": "application/pdf",
+162         "Content-Disposition": `attachment; filename="certificados-${params.id}.pdf"`,
+163         "Cache-Control": "no-store",
+164       },
+165     });
+166   } catch (e: any) {
+167     return NextResponse.json({ ok: false, error: e?.message || "Falha ao gerar certificados" }, { status: 500 });
+168   }
+169 }
+
+===== app/api/cert-events/[id]/template/route.ts =====
+1 import { NextResponse } from "next/server";
+2 import { buildStudentsTemplateWorkbook, workbookToBuffer } from "@/lib/excel";
+3 
+4 export const dynamic = "force-dynamic";
+5 
+6 export async function GET(_: Request, { params }: { params: { id: string }}) {
+7   const wb = buildStudentsTemplateWorkbook();
+8   const buf = workbookToBuffer(wb);
+9   const fileName = `cert-event-${params.id}-alunos.xlsx`;
+10 
+11   return new NextResponse(buf, {
+12     status: 200,
+13     headers: {
+14       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+15       "Content-Disposition": `attachment; filename="${fileName}"`,
+16       "Cache-Control": "no-store",
+17     },
+18   });
+19 }
+
+===== app/gestao/certificados/[id]/page.tsx =====
+1 "use client";
+2 export const dynamic = "force-dynamic";
+3 
+4 import { useEffect, useMemo, useState } from "react";
+5 import Link from "next/link";
+6 
+7 type EventItem = {
+8   id: string;
+9   nome: string;
+10   descricao?: string;
+11   data_inicio?: string;
+12   data_fim?: string;
+13   local?: string;
+14   carga_horaria?: string;
+15   responsavel?: string;
+16   tags?: string;
+17   status?: string;
+18   observacoes?: string;
+19 };
+20 type Student = {
+21   aluno_nome: string;
+22   aluno_doc?: string;
+23   turma?: string;
+24   carga_horaria?: string;
+25   observacoes?: string;
+26 };
+27 
+28 function useEventIdFromPath(): string {
+29   // /gestao/certificados/[id]
+30   const parts = typeof window !== "undefined" ? window.location.pathname.split("/") : [];
+31   return parts[parts.length - 1] || "";
+32 }
+33 
+34 const evKey = (id: string) => `cert:event:${id}`;
+35 const stKey = (id: string) => `cert:event:students:${id}`;
+36 
+37 export default function CertEventPage() {
+38   const id = useEventIdFromPath();
+39 
+40   const [ev, setEv] = useState<EventItem>(() => ({
+41     id, nome: "",
+42     descricao: "", data_inicio: "", data_fim: "",
+43     local: "", carga_horaria: "", responsavel: "",
+44     tags: "", status: "", observacoes: ""
+45   }));
+46   const [students, setStudents] = useState<Student[]>([]);
+47   const [saving, setSaving] = useState(false);
+48   const [uploading, setUploading] = useState(false);
+49   const [generating, setGenerating] = useState(false);
+50 
+51   // carrega do localStorage
+52   useEffect(() => {
+53     if (!id) return;
+54     try {
+55       const raw = localStorage.getItem(evKey(id));
+56       if (raw) setEv(JSON.parse(raw));
+57     } catch {}
+58     try {
+59       const raw = localStorage.getItem(stKey(id));
+60       if (raw) setStudents(JSON.parse(raw));
+61     } catch {}
+62   }, [id]);
+63 
+64   function persist(next: EventItem) {
+65     setEv(next);
+66     try { localStorage.setItem(evKey(id), JSON.stringify(next)); } catch {}
+67   }
+68 
+69   async function onSave(e: React.FormEvent) {
+70     e.preventDefault();
+71     if (!ev.nome?.trim()) {
+72       alert("Nome do evento é obrigatório");
+73       return;
+74     }
+75     setSaving(true);
+76     // sem backend por enquanto — apenas persiste localmente
+77     persist({ ...ev, id });
+78     setSaving(false);
+79     alert("Evento salvo localmente.");
+80   }
+81 
+82   async function downloadTemplate() {
+83     const res = await fetch(`/api/cert-events/${id}/template`, { cache: "no-store" });
+84     if (!res.ok) { alert("Falha ao baixar modelo"); return; }
+85     const blob = await res.blob();
+86     const a = document.createElement("a");
+87     a.href = URL.createObjectURL(blob);
+88     a.download = `cert-event-${id}-alunos.xlsx`;
+89     document.body.appendChild(a); a.click(); a.remove();
+90     URL.revokeObjectURL(a.href);
+91   }
+92 
+93   async function onUploadPlanilha(file: File) {
+94     if (!file) return;
+95     setUploading(true);
+96     try {
+97       const fd = new FormData();
+98       fd.append("file", file);
+99       const res = await fetch(`/api/cert-events/${id}/students`, { method: "POST", body: fd });
+100       const data = await res.json().catch(() => ({}));
+101       if (!res.ok || data?.ok === false) {
+102         alert(data?.error || "Falha ao processar planilha");
+103         return;
+104       }
+105       const alunos: Student[] = data.alunos || [];
+106       setStudents(alunos);
+107       try { localStorage.setItem(stKey(id), JSON.stringify(alunos)); } catch {}
+108     } finally {
+109       setUploading(false);
+110       (document.getElementById("upload-xlsx") as HTMLInputElement | null)?.value && ((document.getElementById("upload-xlsx") as HTMLInputElement).value = "");
+111     }
+112   }
+113 
+114   async function gerarPDF() {
+115     if (!ev.nome?.trim()) {
+116       alert("Preencha o nome do evento antes de gerar.");
+117       return;
+118     }
+119     if (!students.length) {
+120       alert("Nenhum aluno carregado. Envie a planilha primeiro.");
+121       return;
+122     }
+123     setGenerating(true);
+124     try {
+125       const res = await fetch(`/api/cert-events/${id}/generate`, {
+126         method: "POST",
+127         headers: { "content-type": "application/json" },
+128         body: JSON.stringify({ event: ev, students })
+129       });
+130       if (!res.ok) {
+131         const data = await res.json().catch(() => ({}));
+132         alert(data?.error || "Falha ao gerar PDF");
+133         return;
+134       }
+135       const blob = await res.blob();
+136       const a = document.createElement("a");
+137       a.href = URL.createObjectURL(blob);
+138       a.download = `certificados-${id}.pdf`;
+139       document.body.appendChild(a); a.click(); a.remove();
+140       URL.revokeObjectURL(a.href);
+141     } finally {
+142       setGenerating(false);
+143     }
+144   }
+145 
+146   return (
+147     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+148       <header className="flex items-center justify-between mb-6">
+149         <h1 className="text-2xl font-semibold">Evento: {ev?.nome || "Novo"}</h1>
+150         <Link href="/gestao/certificados" className="btn-primary">Voltar</Link>
+151       </header>
+152 
+153       {/* FORM DO EVENTO */}
+154       <section className="card p-6 mb-6">
+155         <form onSubmit={onSave} className="grid gap-4">
+156           <div>
+157             <label className="block text-sm font-medium mb-1">Nome do evento *</label>
+158             <input className="input" value={ev.nome} onChange={e => persist({ ...ev, nome: e.target.value })} required />
+159           </div>
+160 
+161           <div>
+162             <label className="block text-sm font-medium mb-1">Descrição</label>
+163             <textarea className="input" rows={4} value={ev.descricao || ""} onChange={e => persist({ ...ev, descricao: e.target.value })} />
+164           </div>
+165 
+166           <div className="grid grid-cols-2 gap-4">
+167             <div>
+168               <label className="block text-sm font-medium mb-1">Data início</label>
+169               <input className="input" type="date" value={ev.data_inicio || ""} onChange={e => persist({ ...ev, data_inicio: e.target.value })} />
+170             </div>
+171             <div>
+172               <label className="block text-sm font-medium mb-1">Data fim</label>
+173               <input className="input" type="date" value={ev.data_fim || ""} onChange={e => persist({ ...ev, data_fim: e.target.value })} />
+174             </div>
+175           </div>
+176 
+177           <div className="grid grid-cols-2 gap-4">
+178             <div>
+179               <label className="block text-sm font-medium mb-1">Local</label>
+180               <input className="input" value={ev.local || ""} onChange={e => persist({ ...ev, local: e.target.value })} />
+181             </div>
+182             <div>
+183               <label className="block text-sm font-medium mb-1">Carga horária</label>
+184               <input className="input" placeholder="Ex.: 8h" value={ev.carga_horaria || ""} onChange={e => persist({ ...ev, carga_horaria: e.target.value })} />
+185             </div>
+186           </div>
+187 
+188           <div className="grid grid-cols-2 gap-4">
+189             <div>
+190               <label className="block text-sm font-medium mb-1">Responsável</label>
+191               <input className="input" value={ev.responsavel || ""} onChange={e => persist({ ...ev, responsavel: e.target.value })} />
+192             </div>
+193             <div>
+194               <label className="block text-sm font-medium mb-1">Tags</label>
+195               <input className="input" placeholder="formação, oficina" value={ev.tags || ""} onChange={e => persist({ ...ev, tags: e.target.value })} />
+196             </div>
+197           </div>
+198 
+199           <div>
+200             <label className="block text-sm font-medium mb-1">Status</label>
+201             <input className="input" placeholder="rascunho, ativo" value={ev.status || ""} onChange={e => persist({ ...ev, status: e.target.value })} />
+202           </div>
+203 
+204           <div>
+205             <label className="block text-sm font-medium mb-1">Observações</label>
+206             <textarea className="input" rows={3} value={ev.observacoes || ""} onChange={e => persist({ ...ev, observacoes: e.target.value })} />
+207           </div>
+208 
+209           <div className="flex justify-end gap-2">
+210             <Link href="/gestao/certificados" className="btn-secondary">Voltar</Link>
+211             <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
+212           </div>
+213         </form>
+214       </section>
+215 
+216       {/* SEÇÃO: PLANILHA + CERTIFICADOS */}
+217       <section className="card p-6">
+218         <h3 className="font-semibold mb-4">Alunos & Certificados</h3>
+219 
+220         <div className="flex flex-wrap gap-3 mb-4">
+221           <button type="button" className="btn-primary" onClick={downloadTemplate}>
+222             Baixar modelo de planilha (.xlsx)
+223           </button>
+224 
+225           <label className="btn-secondary cursor-pointer">
+226             <input id="upload-xlsx" type="file" accept=".xlsx,.xls" className="hidden"
+227                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadPlanilha(f); }} />
+228             {uploading ? "Enviando..." : "Enviar planilha preenchida"}
+229           </label>
+230 
+231           <button type="button" className="btn-primary" onClick={gerarPDF} disabled={generating || !students.length}>
+232             {generating ? "Gerando..." : "Gerar certificados (PDF único)"}
+233           </button>
+234         </div>
+235 
+236         <p className="text-sm text-gray-600 mb-2">
+237           {students.length
+238             ? <>Alunos carregados: <strong>{students.length}</strong></>
+239             : "Nenhum aluno carregado ainda. Baixe o modelo, preencha e envie a planilha."}
+240         </p>
+241 
+242         {!!students.length && (
+243           <div className="max-h-64 overflow-auto border rounded-md">
+244             <table className="w-full text-sm">
+245               <thead className="bg-gray-50">
+246                 <tr>
+247                   <th className="p-2 text-left">Nome</th>
+248                   <th className="p-2 text-left">Doc.</th>
+249                   <th className="p-2 text-left">Turma</th>
+250                   <th className="p-2 text-left">CH</th>
+251                   <th className="p-2 text-left">Obs.</th>
+252                 </tr>
+253               </thead>
+254               <tbody>
+255                 {students.map((s, i) => (
+256                   <tr key={i} className="border-t">
+257                     <td className="p-2">{s.aluno_nome}</td>
+258                     <td className="p-2">{s.aluno_doc || "-"}</td>
+259                     <td className="p-2">{s.turma || "-"}</td>
+260                     <td className="p-2">{s.carga_horaria || "-"}</td>
+261                     <td className="p-2">{s.observacoes || "-"}</td>
+262                   </tr>
+263                 ))}
+264               </tbody>
+265             </table>
+266           </div>
+267         )}
+268       </section>
+269     </main>
+270   );
+271 }

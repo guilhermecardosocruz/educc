@@ -1,0 +1,46 @@
+
+===== app/gestao/page.tsx =====
+1 export const dynamic = "force-dynamic";
+2 
+3 export default function GestaoPage() {
+4   return (
+5     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+6       <header className="flex items-center justify-between mb-6">
+7         <h1 className="text-2xl font-semibold">Gestão</h1>
+8         <a href="/dashboard" className="btn-primary">Voltar</a>
+9       </header>
+10 
+11       <section className="card p-6">
+12         <div className="mb-4">
+13           <button type="button" className="btn-primary" onClick={() => (window.location.href = '/gestao/certificados')}>
+14             Gerar certificados
+15           </button>
+16         </div>
+17         <div className="mb-4">
+18           <button type="button" className="btn-primary" onClick={() => (window.location.href = '/gestao/certificados')}>
+19             Gerar certificados
+20           </button>
+21         </div>
+22         <p className="text-gray-700">Aqui terá opções de gestão.</p>
+23       </section>
+24     </main>
+25   );
+26 }
+
+===== app/gestao/certificados/page.tsx =====
+1 export const dynamic = "force-dynamic";
+2 
+3 export default function GestaoCertificadosPage() {
+4   return (
+5     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+6       <header className="flex items-center justify-between mb-6">
+7         <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
+8         <a href="/gestao" className="btn-primary">Voltar</a>
+9       </header>
+10 
+11       <section className="card p-6">
+12         <p className="text-gray-700">aqui terá requisitos para gerar certificados</p>
+13       </section>
+14     </main>
+15   );
+16 }

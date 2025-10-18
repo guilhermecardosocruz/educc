@@ -1,0 +1,447 @@
+
+===== components/UserMenuButton.tsx =====
+1 "use client";
+2 import { useEffect, useRef, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 
+5 type Props = {
+6   onLogout?: () => Promise<void> | void;
+7 };
+8 
+9 export default function UserMenuButton({ onLogout }: Props) {
+10   const router = useRouter();
+11   const [open, setOpen] = useState(false);
+12   const ref = useRef<HTMLDivElement | null>(null);
+13 
+14   useEffect(() => {
+15     function onDocClick(e: MouseEvent) {
+16       if (!ref.current) return;
+17       if (!ref.current.contains(e.target as Node)) setOpen(false);
+18     }
+19     document.addEventListener("mousedown", onDocClick);
+20     return () => document.removeEventListener("mousedown", onDocClick);
+21   }, []);
+22 
+23   async function handleLogout() {
+24     if (onLogout) {
+25       await onLogout();
+26       return;
+27     }
+28     await fetch("/api/auth/logout", { method: "POST" });
+29     router.push("/login");
+30   }
+31 
+32   return (
+33     <div className="relative" ref={ref}>
+34       <button
+35         type="button"
+36         aria-label="Abrir menu"
+37         className="h-10 px-3 inline-flex items-center justify-center rounded-md border border-gray-200 hover:bg-gray-100"
+38         onClick={() => setOpen((v) => !v)}
+39       >
+40         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+41           <circle cx="12" cy="5" r="1.8" />
+42           <circle cx="12" cy="12" r="1.8" />
+43           <circle cx="12" cy="19" r="1.8" />
+44         </svg>
+45       </button>
+46 
+47       {open && (
+48         <div className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-20">
+49           <button
+50             className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+51             onClick={() => { setOpen(false); router.push("/gestao"); }}
+52           >
+53             Gestão
+54           </button>
+55           <div className="my-1 border-t" />
+56           <button
+57             className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+58             onClick={handleLogout}
+59           >
+60             Sair
+61           </button>
+62         </div>
+63       )}
+64     </div>
+65   );
+66 }
+
+===== app/dashboard/page.tsx =====
+1 "use client";
+2 import { useEffect, useRef, useState } from "react";
+3 import { useRouter } from "next/navigation";
+4 import ClassCard from "./ClassCard";
+5 import CreateGroupModal from "@/components/CreateGroupModal";
+6 import CreateClassModal from "@/components/CreateClassModal";
+7 import UserMenuButton from "@/components/UserMenuButton";
+8 
+9 type Me = { ok: boolean; user?: { id: string; name: string; email: string } };
+10 type Role = "PROFESSOR" | "GESTOR" | null;
+11 type ClassItem = { id: string; name: string; createdAt: string; roleForMe: Role };
+12 type GroupItem = { id: string; name: string; classesCount?: number };
+13 
+14 export default function DashboardPage() {
+15   const router = useRouter();
+16   const [me, setMe] = useState<Me | null>(null);
+17   const [loading, setLoading] = useState(true);
+18   const [classes, setClasses] = useState<ClassItem[]>([]);
+19   const [groups, setGroups] = useState<GroupItem[]>([]);
+20   const [classModalOpen, setClassModalOpen] = useState(false);
+21   const [groupModalOpen, setGroupModalOpen] = useState(false);
+22 
+23   const [groupMenuOpen, setGroupMenuOpen] = useState<string | null>(null);
+24   const groupMenuRef = useRef<HTMLDivElement | null>(null);
+25 
+26   useEffect(() => {
+27     function onDocClick(e: MouseEvent) {
+28       if (!groupMenuRef.current) return;
+29       if (!groupMenuRef.current.contains(e.target as Node)) {
+30         setGroupMenuOpen(null);
+31       }
+32     }
+33     document.addEventListener("mousedown", onDocClick);
+34     return () => document.removeEventListener("mousedown", onDocClick);
+35   }, []);
+36 
+37   async function fetchMe() {
+38     const res = await fetch("/api/auth/me", { cache: "no-store" });
+39     if (res.status === 401) { router.push("/login"); return; }
+40     const data: Me = await res.json();
+41     setMe(data);
+42   }
+43   async function fetchClasses() {
+44     const res = await fetch("/api/classes", { cache: "no-store" });
+45     if (res.status === 401) { router.push("/login"); return; }
+46     const data = await res.json();
+47     if (data?.ok) setClasses(data.classes || []);
+48   }
+49   async function fetchGroups() {
+50     const res = await fetch("/api/class-groups", { cache: "no-store" });
+51     if (res.status === 401) { router.push("/login"); return; }
+52     const data = await res.json().catch(()=> ({}));
+53     if (res.ok && data?.ok) {
+54       setGroups((data.groups || []).map((g: any) => ({
+55         id: g.id, name: g.name, classesCount: g.classesCount ?? g.count ?? undefined
+56       })));
+57     }
+58   }
+59 
+60   useEffect(() => {
+61     (async () => {
+62       await fetchMe();
+63       await fetchClasses();
+64       await fetchGroups();
+65       setLoading(false);
+66     })();
+67     // eslint-disable-next-line react-hooks/exhaustive-deps
+68   }, []);
+69 
+70   async function onLogout() {
+71     await fetch("/api/auth/logout", { method: "POST" });
+72     router.push("/login");
+73   }
+74 
+75   async function onDeleteGroup(g: GroupItem) {
+76     if (!confirm(`Excluir o grupo "${g.name}"?`)) return;
+77     const res = await fetch(`/api/class-groups/${g.id}`, { method: "DELETE" });
+78     const data = await res.json().catch(()=> ({}));
+79     if (!res.ok || data?.ok === false) {
+80       alert(data?.error || "Erro ao excluir grupo");
+81       return;
+82     }
+83     await fetchGroups();
+84   }
+85 
+86   async function onRenameGroup(g: GroupItem) {
+87     const next = prompt("Novo nome do grupo:", g.name)?.trim();
+88     if (!next || next === g.name) return;
+89     const res = await fetch(`/api/class-groups/${g.id}`, {
+90       method: "PATCH",
+91       headers: { "content-type": "application/json" },
+92       body: JSON.stringify({ name: next })
+93     });
+94     const data = await res.json().catch(()=> ({}));
+95     if (!res.ok || data?.ok === false) {
+96       alert(data?.error || "Erro ao renomear grupo");
+97       return;
+98     }
+99     await fetchGroups();
+100   }
+101 
+102   if (loading) {
+103     return <main className="min-h-screen flex items-center justify-center">Carregando...</main>;
+104   }
+105 
+106   const firstName = me?.user?.name?.split(" ")[0] || "Olá";
+107 
+108   return (
+109     <main className="min-h-screen p-6 lg:p-10">
+110       <header className="flex items-center justify-between max-w-5xl mx-auto mb-6">
+111         <div className="flex items-center gap-3">
+112           <span className="inline-block h-4 w-4 rounded-full bg-[var(--color-brand-blue)]" />
+113           <h1 className="text-2xl font-semibold">Olá {firstName}</h1>
+114         </div>
+115         <UserMenuButton onLogout={onLogout} />
+116       </header>
+117 
+118       <section className="max-w-5xl mx-auto">
+119         <div className="card p-6 mb-6">
+120           <div className="flex flex-col gap-3">
+121             <button type="button" className="btn-primary" onClick={() => setClassModalOpen(true)}>
+122               Criar turma
+123             </button>
+124             <button type="button" className="btn-primary" onClick={() => setGroupModalOpen(true)}>
+125               Criar grupo de turma
+126             </button>
+127             <p className="text-xs text-gray-500">
+128               Você poderá informar o nome e (no grupo) escolher as turmas desejadas.
+129             </p>
+130           </div>
+131         </div>
+132 
+133         <div className="card p-6 mb-6">
+134           <h3 className="font-semibold mb-4">Meus grupos</h3>
+135           {groups.length === 0 ? (
+136             <p className="text-gray-600">Nenhum grupo criado ainda.</p>
+137           ) : (
+138             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" ref={groupMenuRef}>
+139               {groups.map((g) => (
+140                 <div key={g.id} className="relative">
+141                   <a
+142                     href={`/groups/${g.id}`}
+143                     className="block border rounded-xl p-4 pr-12 hover:shadow-sm transition"
+144                   >
+145                     <div className="flex items-center justify-between gap-3">
+146                       <h3 className="font-semibold truncate">{g.name}</h3>
+147                       {typeof g.classesCount === "number" ? (
+148                         <span className="text-xs text-gray-500">{g.classesCount} turma(s)</span>
+149                       ) : null}
+150                     </div>
+151                   </a>
+152 
+153                   <div className="absolute top-2 right-2">
+154                     <button
+155                       type="button"
+156                       className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-gray-100 border border-gray-200"
+157                       aria-label="Mais ações"
+158                       onClick={(e) => {
+159                         e.preventDefault(); e.stopPropagation();
+160                         setGroupMenuOpen((id) => (id === g.id ? null : g.id));
+161                       }}
+162                     >
+163                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+164                         <circle cx="12" cy="5" r="1.8" />
+165                         <circle cx="12" cy="12" r="1.8" />
+166                         <circle cx="12" cy="19" r="1.8" />
+167                       </svg>
+168                     </button>
+169 
+170                     {groupMenuOpen === g.id && (
+171                       <div
+172                         className="absolute right-0 mt-2 w-44 rounded-md border bg-white shadow-md z-20"
+173                         onClick={(e) => { e.stopPropagation(); }}
+174                       >
+175                         <button
+176                           className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+177                           onClick={() => { setGroupMenuOpen(null); onRenameGroup(g); }}
+178                         >
+179                           Renomear
+180                         </button>
+181                         <div className="my-1 border-t" />
+182                         <button
+183                           className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+184                           onClick={() => { setGroupMenuOpen(null); onDeleteGroup(g); }}
+185                         >
+186                           Excluir
+187                         </button>
+188                       </div>
+189                     )}
+190                   </div>
+191                 </div>
+192               ))}
+193             </div>
+194           )}
+195         </div>
+196 
+197         <div className="card p-6">
+198           <h3 className="font-semibold mb-4">Minhas turmas</h3>
+199           {classes.length === 0 ? (
+200             <p className="text-gray-600">Nenhuma turma cadastrada ainda.</p>
+201           ) : (
+202             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+203               {classes.map((c) => (
+204                 <ClassCard key={c.id} cls={c as any} />
+205               ))}
+206             </div>
+207           )}
+208         </div>
+209       </section>
+210 
+211       <CreateClassModal open={classModalOpen} onOpenChange={setClassModalOpen} onCreated={fetchClasses} />
+212       <CreateGroupModal
+213         open={groupModalOpen}
+214         onOpenChange={setGroupModalOpen}
+215         classes={classes.map(c => ({ id: c.id, name: c.name }))}
+216         onCreated={fetchGroups}
+217       />
+218     </main>
+219   );
+220 }
+
+===== app/gestao/page.tsx =====
+1 export const dynamic = "force-dynamic";
+2 
+3 export default function GestaoPage() {
+4   return (
+5     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+6       <header className="flex items-center justify-between mb-6">
+7         <h1 className="text-2xl font-semibold">Gestão</h1>
+8         <a href="/dashboard" className="btn-primary">Voltar</a>
+9       </header>
+10 
+11       <section className="card p-6">
+12         <div className="mb-4">
+13           <button type="button" className="btn-primary" onClick={() => (window.location.href = '/gestao/certificados')}>
+14             Gerar certificados
+15           </button>
+16         </div>
+17         <p className="text-gray-700">Aqui terá opções de gestão.</p>
+18       </section>
+19     </main>
+20   );
+21 }
+
+===== app/gestao/certificados/page.tsx =====
+1 export const dynamic = "force-dynamic";
+2 
+3 export default function GestaoCertificadosPage() {
+4   return (
+5     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+6       <header className="flex items-center justify-between mb-6">
+7         <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
+8         <a href="/gestao" className="btn-primary">Voltar</a>
+9       </header>
+10 
+11       <section className="card p-6">
+12         <p className="text-gray-700">aqui terá requisitos para gerar certificados</p>
+13       </section>
+14     </main>
+15   );
+16 }
+
+===== app/layout.tsx =====
+1 import "./globals.css";
+2 export { metadata, viewport } from "./metadata";
+3 
+4 export default function RootLayout({ children }: { children: React.ReactNode }) {
+5   return (
+6     <html lang="pt-BR"><head><link rel="manifest" href="/manifest.webmanifest" /></head><body>{children}</body>
+7     </html>
+8   );
+9 }
+
+===== middleware.ts =====
+1 import { NextResponse } from "next/server";
+2 import type { NextRequest } from "next/server";
+3 
+4 export function middleware(req: NextRequest) {
+5   const path = req.nextUrl.pathname;
+6 
+7   // Corrige / (auth) /register e / (auth) /recover
+8   if (path === "/(auth)/register") {
+9     const url = req.nextUrl.clone();
+10     url.pathname = "/register";
+11     return NextResponse.redirect(url);
+12   }
+13   if (path === "/(auth)/recover") {
+14     const url = req.nextUrl.clone();
+15     url.pathname = "/recover-email";
+16     return NextResponse.redirect(url);
+17   }
+18 
+19   return NextResponse.next();
+20 }
+21 
+22 export const config = {
+23   matcher: ["/(auth)/register", "/(auth)/recover"]
+24 };
+
+===== next.config.mjs =====
+1 /** next.config.mjs — PWA habilitado em produção + ignora ESLint/TS no build */
+2 import withPWA from 'next-pwa';
+3 
+4 const isDev = process.env.NODE_ENV !== 'production';
+5 
+6 const withPwa = withPWA({
+7   dest: 'public',
+8   register: true,
+9   skipWaiting: true,
+10   disable: isDev,
+11   fallbacks: { document: '/offline' },
+12   // Ajustes finos de cache (opcional)
+13   runtimeCaching: [
+14     {
+15       urlPattern: ({ request }) => request.destination === 'image',
+16       handler: 'CacheFirst',
+17       options: {
+18         cacheName: 'images',
+19         expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+20       },
+21     },
+22     {
+23       urlPattern: ({ request }) =>
+24         ['style', 'script', 'font'].includes(request.destination),
+25       handler: 'StaleWhileRevalidate',
+26       options: { cacheName: 'assets' },
+27     },
+28   ],
+29 });
+30 
+31 export default withPwa({
+32   // 🔽 faz o Next NÃO barrar o build por lint/type errors
+33   eslint: { ignoreDuringBuilds: true },
+34   typescript: { ignoreBuildErrors: true },
+35 });
+
+===== public/sw.js =====
+1 if(!self.define){let s,e={};const a=(a,i)=>(a=new URL(a+".js",i).href,e[a]||new Promise(e=>{if("document"in self){const s=document.createElement("script");s.src=a,s.onload=e,document.head.appendChild(s)}else s=a,importScripts(a),e()}).then(()=>{let s=e[a];if(!s)throw new Error(`Module ${a} didn’t register its module`);return s}));self.define=(i,r)=>{const c=s||("document"in self?document.currentScript.src:"")||location.href;if(e[c])return;let t={};const n=s=>a(s,c),o={module:{uri:c},exports:t,require:n};e[c]=Promise.all(i.map(s=>o[s]||n(s))).then(s=>(r(...s),t))}}define(["./workbox-c05e7c83"],function(s){"use strict";importScripts("fallback-y4R1s8RgMvQoQXCmVlr9N.js"),self.skipWaiting(),s.clientsClaim(),s.precacheAndRoute([{url:"/_next/app-build-manifest.json",revision:"04a6a61786eefe801809c3cc466368d9"},{url:"/_next/static/chunks/5050-86d4b4e456aca1a5.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/9477-f60be2a4c5842cbf.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/(auth)/login/page-dcccae14df3508d8.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/(auth)/recover-email/page-dfdf485e5ac3c802.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/(auth)/recover/page-fb5c82c50ce83640.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/(auth)/register/page-e3ab172ef6dd7c44.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/_not-found/page-ecab834e91a091a7.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/auth/login/route-1005731469526404.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/auth/logout/route-0cd8886ec97e78ce.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/auth/me/route-dfb6ca6d37c4cb76.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/auth/recover-email/route-ec83d457ff3c0218.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/auth/register/route-7eaaf262336a8905.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/class-groups/%5BgroupId%5D/analytics/route-f7ee551c30dfe1d4.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/class-groups/%5BgroupId%5D/classes/route-c61e6146fe76b075.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/class-groups/%5BgroupId%5D/report/route-5006a9646a3c2e4c.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/class-groups/%5BgroupId%5D/route-b6b4bfaa110fae1d.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/class-groups/route-05e159205409dd6c.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/access/claim/route-206d34d32adef156.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/access/links/route-1c93a78e3eb52501.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/access/members/route-173a725b2153e4e2.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/access/role/route-c9ff1c7e16b13732.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/chamadas/%5Bseq%5D/presences/route-3c103ae0b2c8a748.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/chamadas/%5Bseq%5D/route-3e1c69ad9157dd1b.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/chamadas/route-cacc13d103e6ef28.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/conteudos/%5Bseq%5D/route-dba3028cf1eb0470.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/conteudos/full/route-98f47372adee0f17.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/conteudos/import/route-7decaf9dbda9edc4.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/conteudos/route-5915467f43ccaa0a.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/groups/route-f896871b7c251de9.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/route-af008f56e9c8f85c.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/students/%5BstudentId%5D/route-e2f4c501b8b99c7a.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/students/import/route-98bd221aafde6b6e.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/%5Bid%5D/students/route-66f930fdb7fc5a5b.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/classes/route-4ab98e55b789ee0c.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/images/generate/route-226610e2e222cb1e.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/api/share/%5Btoken%5D/route-05807a2d5486229a.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/ai-help/page-15c8e9c61d09b26a.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/chamadas/%5Bseq%5D/page-d9c350b6ffa957c2.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/chamadas/new/page-37874bd228340c1a.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/chamadas/page-1d978feac7744d7d.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/conteudos/%5Bseq%5D/page-c47d7a6aaed47546.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/conteudos/import/page-918a022838b0096e.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/conteudos/new/page-7e59355ef65cdc76.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/conteudos/page-7bc20618a9be5761.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/classes/%5Bid%5D/page-fef231cd53cdd0e5.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/dashboard/page-a6b489e11367bdf7.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/groups/%5BgroupId%5D/loading-66bc8b3dfc2675f7.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/groups/%5BgroupId%5D/page-dd59bca4f0f23a65.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/layout-c27820766143b894.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/offline/page-8391d6b422178742.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/page-103cc5fd6e67b1ba.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/app/share/%5Btoken%5D/page-2bf0c537a67836ca.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/c31353ee-dce82551107862a4.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/framework-16b810c16835822d.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/main-37cac4cb99924a21.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/main-app-5933891ed20e556e.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/pages/_app-aba45496d8a6af9c.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/pages/_error-4699b422afc8365b.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/chunks/polyfills-42372ed130431b0a.js",revision:"846118c33b2c0e922d7b3a7676f81f6f"},{url:"/_next/static/chunks/webpack-f05c4269add523d2.js",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/_next/static/css/283cf17d67f088c5.css",revision:"283cf17d67f088c5"},{url:"/_next/static/y4R1s8RgMvQoQXCmVlr9N/_buildManifest.js",revision:"14a34451079d638568f0195064a742aa"},{url:"/_next/static/y4R1s8RgMvQoQXCmVlr9N/_ssgManifest.js",revision:"b6652df95db52feb4daf4eca35380933"},{url:"/file.svg",revision:"d09f95206c3fa0bb9bd9fefabfd0ea71"},{url:"/globe.svg",revision:"2aaafa6a49b6563925fe440891e32717"},{url:"/icons/icon-192.png",revision:"f034b0a49acc611e9debc3ad1b8eb7ec"},{url:"/icons/icon-512.png",revision:"337cd3e0e65733b6b08a8cf426e1a46e"},{url:"/icons/maskable-512.png",revision:"d891d42b9ae0510e15661e022df78800"},{url:"/manifest.json",revision:"09bd9f69ac7b69e3b7d749d70e72b1a8"},{url:"/next.svg",revision:"8e061864f388b47f33a1c3780831193e"},{url:"/offline",revision:"y4R1s8RgMvQoQXCmVlr9N"},{url:"/templates/CONTENTS_README.txt",revision:"5c0612c9d308aacd5473d103cb5db67c"},{url:"/templates/README.txt",revision:"9927e418f2229bece97dac159172ce12"},{url:"/templates/contents.csv",revision:"203cb63bff620b2e3df1d0f85a429ab2"},{url:"/templates/contents.xlsx",revision:"11274d2333d3afdc4b835988faad3d72"},{url:"/templates/students.csv",revision:"961093844bf76dd0db1db1b2b41c8695"},{url:"/templates/students.xlsx",revision:"42a680d80ff932b485b2b61afadb9b41"},{url:"/vercel.svg",revision:"c0af2f507b369b085b35ef4bbe3bcf1e"},{url:"/window.svg",revision:"a2760511c65806022ad20adf74370ff3"}],{ignoreURLParametersMatching:[]}),s.cleanupOutdatedCaches(),s.registerRoute("/",new s.NetworkFirst({cacheName:"start-url",plugins:[{cacheWillUpdate:async({request:s,response:e,event:a,state:i})=>e&&"opaqueredirect"===e.type?new Response(e.body,{status:200,statusText:"OK",headers:e.headers}):e},{handlerDidError:async({request:s})=>self.fallback(s)}]}),"GET"),s.registerRoute(({request:s})=>"image"===s.destination,new s.CacheFirst({cacheName:"images",plugins:[new s.ExpirationPlugin({maxEntries:100,maxAgeSeconds:2592e3}),{handlerDidError:async({request:s})=>self.fallback(s)}]}),"GET"),s.registerRoute(({request:s})=>["style","script","font"].includes(s.destination),new s.StaleWhileRevalidate({cacheName:"assets",plugins:[{handlerDidError:async({request:s})=>self.fallback(s)}]}),"GET")});
+2 // bump: 2025-10-17T15:53:16Z
+
+===== app/manifest.webmanifest/route.ts =====
+1 import { NextResponse } from "next/server";
+2 
+3 export function GET() {
+4   const manifest = {
+5     name: "EDUCC",
+6     short_name: "EDUCC",
+7     description: "Gestão de turmas, chamadas e conteúdos — instalável.",
+8     start_url: "/",
+9     scope: "/",
+10     display: "standalone",
+11     orientation: "portrait",
+12     background_color: "#FFFFFF",
+13     theme_color: "#0A66FF",
+14     icons: [
+15       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+16       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+17     ]
+18   };
+19   return NextResponse.json(manifest);
+20 }
+
+===== public/manifest.json =====
+1 {
+2   "name": "EDUCC",
+3   "short_name": "EDUCC",
+4   "start_url": "/",
+5   "display": "standalone",
+6   "background_color": "#FFFFFF",
+7   "theme_color": "#0A66FF",
+8   "description": "Plataforma educacional instalável (PWA).",
+9   "icons": [
+10     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+11     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+12     { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+13   ]
+14 }
