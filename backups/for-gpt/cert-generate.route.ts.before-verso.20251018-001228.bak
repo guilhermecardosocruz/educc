@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, PDFFont, EmbedPNGOptions, EmbeddedPage } from "pdf-lib";
 
 export const dynamic = "force-dynamic";
 
@@ -10,17 +10,10 @@ type EventPayload = {
   data_inicio?: string;
   data_fim?: string;
   local?: string;
-  cidade_uf?: string;
   carga_horaria?: string;
   responsavel?: string;
-  // textos
-  texto_participante?: string;
-  texto_ministrante?: string;
-  texto_organizador?: string;
-  texto_verso?: string; // <<< agora suportado
-  // assinaturas configuráveis
-  sign1_name?: string; sign1_role?: string;
-  sign2_name?: string; sign2_role?: string;
+  cidade_uf?: string; // ex.: "Criciúma (SC)"
+  data_cidade_personalizada?: string; // ex.: "Criciúma (SC), 19 de agosto de 2025."
 };
 type Student = {
   aluno_nome: string;
@@ -70,14 +63,14 @@ function wrapTextByWidth({
   return lines;
 }
 
-/** centraliza texto */
+/** centraliza uma string com base na largura do texto */
 function drawCenteredText(page: any, text: string, y: number, size: number, font: PDFFont, color = rgb(0,0,0)) {
   const { width } = page.getSize();
   const textWidth = font.widthOfTextAtSize(text, size);
   page.drawText(text, { x: (width - textWidth) / 2, y, size, font, color });
 }
 
-/** texto alinhado à direita com margem */
+/** direita: calcula x para alinhar à direita respeitando margem */
 function drawRightAlignedText(page: any, text: string, y: number, size: number, font: PDFFont, rightMargin: number, color = rgb(0,0,0)) {
   const { width } = page.getSize();
   const textWidth = font.widthOfTextAtSize(text, size);
@@ -85,12 +78,13 @@ function drawRightAlignedText(page: any, text: string, y: number, size: number, 
   page.drawText(text, { x, y, size, font, color });
 }
 
-/** data pt-BR "19 de agosto de 2025" a partir de "YYYY-MM-DD" */
+/** formata data pt-BR "19 de agosto de 2025" a partir de "YYYY-MM-DD" */
 function formatPtBrDate(iso?: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
   const fmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  // normaliza "19 de agosto de 2025"
   const parts = fmt.formatToParts(d);
   const dia = parts.find(p => p.type === "day")?.value ?? "";
   const mes = parts.find(p => p.type === "month")?.value ?? "";
@@ -98,7 +92,7 @@ function formatPtBrDate(iso?: string): string | null {
   return `${dia} de ${mes} de ${ano}`;
 }
 
-/** bloco de assinaturas (3 colunas) */
+/** bloco de assinaturas: três colunas com linha e legenda */
 function drawSignaturesBlock(page: any, font: PDFFont, fontBold: PDFFont, opts: {
   y: number;
   leftMargin: number;
@@ -117,12 +111,17 @@ function drawSignaturesBlock(page: any, font: PDFFont, fontBold: PDFFont, opts: 
   for (let i = 0; i < cols; i++) {
     const x0 = leftMargin + i * colW + 10;
     const x1 = leftMargin + (i + 1) * colW - 10;
+
+    // linha
     page.drawLine({ start: { x: x0, y: lineY }, end: { x: x1, y: lineY }, thickness: 1, color: rgb(0,0,0) });
+
+    // nome (negrito) e cargo
     const centerX = (x0 + x1) / 2;
     const nameSize = 10;
     const roleSize = 9;
     const name = titles[i].name;
     const role = titles[i].role;
+
     const nameWidth = fontBold.widthOfTextAtSize(name, nameSize);
     const roleWidth = font.widthOfTextAtSize(role, roleSize);
     page.drawText(name, { x: centerX - nameWidth / 2, y: nameY, size: nameSize, font: fontBold });
@@ -135,21 +134,16 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
+  // cores inspiradas no modelo
   const red = rgb(0.80, 0.00, 0.00);
   const green = rgb(0.00, 0.45, 0.30);
   const gray = rgb(0.25, 0.25, 0.25);
 
-  // defaults de assinatura, se não vierem do formulário
-  const s1name = (ev.sign1_name || "VÁGNER ESPÍNDOLA RODRIGUES").toUpperCase();
-  const s1role = ev.sign1_role || "Prefeito Municipal";
-  const s2name = (ev.sign2_name || "GEÓVANA BENEDET ZANETTE").toUpperCase();
-  const s2role = ev.sign2_role || "Secretária Municipal de Educação";
-
   for (const st of alunos) {
     if (!st?.aluno_nome) continue;
 
-    // === FRENTE ===
-    const page = pdf.addPage([842, 595]); // A4 paisagem
+    // A4 paisagem
+    const page = pdf.addPage([842, 595]);
     const { width, height } = page.getSize();
 
     const margin = 36;
@@ -159,7 +153,7 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const contentWidth = width - (contentX + right + 24);
     let y = height - 72;
 
-    // Moldura
+    // Moldura leve
     page.drawRectangle({
       x: margin / 2,
       y: margin / 2,
@@ -167,125 +161,82 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       height: height - margin,
       borderColor: rgb(0.6, 0.6, 0.6),
       borderWidth: 0.8,
+      opacity: 1
     });
 
-    // Barras decorativas
+    // Elementos decorativos simples no canto superior direito (triângulos)
     page.drawRectangle({ x: width - 140, y: height - 40, width: 140, height: 40, color: red });
     page.drawRectangle({ x: width - 95, y: height - 70, width: 95, height: 30, color: green });
 
-    // Título
+    // Título "CERTIFICADO" centralizado em vermelho
     drawCenteredText(page, "CERTIFICADO", y, 28, fontBold, red);
     y -= 44;
 
-    // Linha com nome + doc
+    // Linha do nome centralizada (NOME e DOC)
     const nomeLinha = [st.aluno_nome, st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
     drawCenteredText(page, nomeLinha, y, 14, fontBold, rgb(0,0,0));
     y -= 28;
 
-    // Texto do corpo
+    // Período e carga
     const periodo =
       ev.data_inicio || ev.data_fim
         ? `${ev.data_inicio ?? ""}${ev.data_inicio && ev.data_fim ? " a " : ""}${ev.data_fim ?? ""}`
         : "";
     const carga = st.carga_horaria || ev.carga_horaria || "";
 
-    // 1) Se veio texto_participante, processa códigos; senão usa modelo padrão
-    let paragraph = ev.texto_participante?.trim();
-    if (paragraph) {
-      paragraph = paragraph
-        .replace(/\[nome do participante\]/gi, st.aluno_nome)
-        .replace(/\[cpf\]/gi, st.aluno_doc || "")
-        .replace(/\[carga horária\]/gi, carga);
-    } else {
-      const partes: string[] = [];
-      partes.push(`Certificamos que ${st.aluno_nome} participou do Curso "${(ev.nome || "Curso").toUpperCase()}",`);
-      partes.push("promovido e organizado pela Escola Municipal de Governo de Criciúma,");
-      if (periodo) partes.push(`realizado no período de ${periodo},`);
-      if (carga)  partes.push(`com carga horária de ${carga}.`);
-      paragraph = partes.join(" ");
-    }
+    // Corpo do texto com o nome do curso (ev.nome) em destaque
+    // Estratégia: dividir em partes para simular negrito no título do curso
+    // “participou do Curso WORKSHOP..., promovido..., realizado em..., com carga horária...”
+    const intro = "participou do Curso ";
+    const curso = ev.nome || "Curso";
+    const pos = [];
 
+    const corpoBase: string[] = [];
+    // intro + curso em caixa alta (para destacar)
+    corpoBase.push(`${intro}${curso.toUpperCase()},`);
+    corpoBase.push("promovido e organizado pela Escola Municipal de Governo de Criciúma,");
+    if (periodo) corpoBase.push(`realizado no período de ${periodo},`);
+    if (carga)  corpoBase.push(`com carga horária de ${carga}.`);
+
+    // Renderização do parágrafo (wrap por largura)
     const bodySize = 12.5;
     const bodyLH = 17;
+    const paragraph = corpoBase.join(" ");
     const bodyLines = wrapTextByWidth({ text: paragraph, font, size: bodySize, maxWidth: contentWidth });
     for (const line of bodyLines) {
       page.drawText(line, { x: contentX, y, size: bodySize, font, color: rgb(0,0,0) });
       y -= bodyLH;
     }
 
-    // Espaço e data/lugar à direita
+    // Espaço
     y -= 20;
+
+    // Data/lugar — à direita
+    const dataTextoCustom = ev.data_cidade_personalizada?.trim();
     const dataFormatada = formatPtBrDate(ev.data_fim || ev.data_inicio);
     const cidade = ev.cidade_uf?.trim() || ev.local?.trim();
-    const linhaData = (cidade && dataFormatada) ? `${cidade}, ${dataFormatada}.` : (dataFormatada ? `${dataFormatada}.` : "");
+    const linhaData = dataTextoCustom
+      ? dataTextoCustom
+      : (cidade && dataFormatada ? `${cidade}, ${dataFormatada}.` : (dataFormatada ? `${dataFormatada}.` : ""));
     if (linhaData) {
       drawRightAlignedText(page, linhaData, y, 12, font, right, gray);
       y -= 28;
+    } else {
+      y -= 10;
     }
 
-    // Assinaturas (3 colunas): S1, S2, Participante
+    // Bloco de assinaturas (3 colunas): Prefeito, Secretária de Educação, Participante
     const signY = 120;
     drawSignaturesBlock(page, font, fontBold, {
       y: signY,
       leftMargin: left,
       rightMargin: right,
       titles: [
-        { name: s1name, role: s1role },
-        { name: s2name, role: s2role },
+        { name: "VÁGNER ESPÍNDOLA RODRIGUES", role: "Prefeito Municipal" },
+        { name: "GEÓVANA BENEDET ZANETTE", role: "Secretária Municipal de Educação" },
         { name: (st.aluno_nome || "Participante").toUpperCase(), role: "Participante" },
       ],
     });
-
-    // === VERSO (opcional) ===
-    if (ev.texto_verso && ev.texto_verso.trim().length > 0) {
-      const page2 = pdf.addPage([842, 595]); // mesma orientação
-      const { width: w2, height: h2 } = page2.getSize();
-      const m2 = 36;
-      const left2 = m2;
-      const right2 = m2;
-      const contentX2 = left2 + 24;
-      const contentW2 = w2 - (contentX2 + right2 + 24);
-      let y2 = h2 - 64;
-
-      // moldura leve no verso
-      page2.drawRectangle({
-        x: m2 / 2,
-        y: m2 / 2,
-        width: w2 - m2,
-        height: h2 - m2,
-        borderColor: rgb(0.75, 0.75, 0.75),
-        borderWidth: 0.6,
-      });
-
-      // título do verso
-      drawCenteredText(page2, "INFORMAÇÕES COMPLEMENTARES", y2, 16, fontBold, rgb(0,0,0));
-      y2 -= 28;
-
-      // texto do verso (aceita listas, parágrafos, etc. — aqui tratamos apenas como parágrafo corrido)
-      const vText = ev.texto_verso.trim();
-      const vSize = 12;
-      const vLH = 16;
-      const vLines = wrapTextByWidth({ text: vText, font, size: vSize, maxWidth: contentW2 });
-      for (const line of vLines) {
-        page2.drawText(line, { x: contentX2, y: y2, size: vSize, font, color: rgb(0,0,0) });
-        y2 -= vLH;
-        if (y2 < 64) {
-          // adiciona nova página de verso se estourar
-          const cont = pdf.addPage([842, 595]);
-          y2 = h2 - 64;
-          cont.drawRectangle({
-            x: m2 / 2,
-            y: m2 / 2,
-            width: w2 - m2,
-            height: h2 - m2,
-            borderColor: rgb(0.75, 0.75, 0.75),
-            borderWidth: 0.6,
-          });
-          // reescreve o restante das linhas nesta nova página
-          page2.drawText("", { x: 0, y: 0, size: 1, font }); // no-op para evitar lint
-        }
-      }
-    }
   }
 
   return await pdf.save();
