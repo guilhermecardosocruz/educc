@@ -9,8 +9,8 @@ type EventPayload = {
   id: string;
   nome: string;
   descricao?: string;
-  data_inicio?: string;  // "YYYY-MM-DD"
-  data_fim?: string;     // "YYYY-MM-DD"
+  data_inicio?: string;
+  data_fim?: string;
   local?: string;
   cidade_uf?: string;
   carga_horaria?: string;
@@ -19,11 +19,11 @@ type EventPayload = {
   texto_participante?: string;
   texto_ministrante?: string;
   texto_organizador?: string;
-  texto_verso?: string;        // conteúdo programático (pode vir com ';' separando itens)
+  texto_verso?: string;
   // assinaturas configuráveis
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
-  // validação & autorização (verso)
+  // validação & autorização
   qr_url?: string;
   autorizacao_texto?: string;
 };
@@ -36,7 +36,7 @@ type Student = {
   observacoes?: string;
 };
 
-/* ============================== Helpers ============================== */
+/** Helpers -----------------------------------------------------------------------------------*/
 function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
   const words = (text || "").trim().split(/\s+/);
   const lines: string[] = [];
@@ -83,21 +83,53 @@ function formatBR(iso?: string | null): string | null {
   const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
 }
+function drawSignaturesBlock(page: any, font: PDFFont, fontBold: PDFFont, opts: {
+  y: number;
+  leftMargin: number;
+  rightMargin: number;
+  titles: { name: string; role: string }[];
+}) {
+  const { width } = page.getSize();
+  const { y, leftMargin, rightMargin, titles } = opts;
+  const usableWidth = width - leftMargin - rightMargin;
+  const cols = titles.length;
+  const colW = usableWidth / cols;
 
-/* ============================== PDF builder ============================== */
+  const lineY = y;
+  const nameY = y - 15;
+  const roleY = y - 30;
+
+  for (let i = 0; i < cols; i++) {
+    const padding = 16;
+    const x0 = leftMargin + i * colW + padding;
+    const x1 = leftMargin + (i + 1) * colW - padding;
+    page.drawLine({ start: { x: x0, y: lineY }, end: { x: x1, y: lineY }, thickness: 1, color: rgb(0,0,0) });
+
+    const centerX = (x0 + x1) / 2;
+    const name = titles[i].name;
+    const role = titles[i].role;
+
+    const nameSize = 10.5;
+    const roleSize = 9.5;
+    const nameWidth = fontBold.widthOfTextAtSize(name, nameSize);
+    const roleWidth = font.widthOfTextAtSize(role, roleSize);
+
+    page.drawText(name, { x: centerX - nameWidth / 2, y: nameY, size: nameSize, font: fontBold });
+    page.drawText(role, { x: centerX - roleWidth / 2, y: roleY, size: roleSize, font });
+  }
+}
+
+/** Gerador -----------------------------------------------------------------------------------*/
 async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
-  // Tipografia: Times (mais próxima do modelo)
-  const font = await pdf.embedFont(StandardFonts.TimesRoman);
-  const fontBold = await pdf.embedFont(StandardFonts.TimesBold);
-  const fontItalic = await pdf.embedFont(StandardFonts.TimesItalic);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  // Paleta
   const red = rgb(0.80, 0.00, 0.00);
   const green = rgb(0.00, 0.45, 0.30);
   const gray = rgb(0.25, 0.25, 0.25);
 
-  // Assinaturas fallback
+  // Assinaturas padrão (fallback)
   const s1name = (ev.sign1_name || "VÁGNER ESPÍNDOLA RODRIGUES").toUpperCase();
   const s1role = ev.sign1_role || "Prefeito Municipal";
   const s2name = (ev.sign2_name || "GEÓVANA BENEDET ZANETTE").toUpperCase();
@@ -106,33 +138,42 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   for (const st of alunos) {
     if (!st?.aluno_nome) continue;
 
-    /* =============================== FRENTE =============================== */
+    /** =============================== FRENTE ================================== */
     const page = pdf.addPage([842, 595]); // A4 paisagem
     const { width, height } = page.getSize();
-    const margin = 36, left = margin, right = margin;
 
-    // Moldura
-    page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
+    const margin = 36;
+    const left = margin;
+    const right = margin;
 
-    // Barras decorativas
+    // Moldura fina
+    page.drawRectangle({
+      x: margin / 2,
+      y: margin / 2,
+      width: width - margin,
+      height: height - margin,
+      borderColor: rgb(0.75, 0.75, 0.75),
+      borderWidth: 0.8,
+    });
+
+    // Elementos decorativos topo
     page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
     page.drawRectangle({ x: width - 105, y: height - 80, width: 105, height: 32, color: green });
 
-    // Título com tracking maior
-    let yTopTitle = height - 104;
-    drawCenteredText(page, "CERTIFICADO", yTopTitle, 32, fontBold, red, 2.5);
+    // Título
+    let y = height - 92;
+    drawCenteredText(page, "CERTIFICADO", y, 30, fontBold, red, 1.6);
+    y -= 34;
 
-    // Nome + documento centralizado (negrito)
-    let yName = yTopTitle - 42;
-    const nameLine = [st.aluno_nome.toUpperCase(), st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
-    drawCenteredText(page, nameLine, yName, 15, fontBold);
+    // Nome + CPF (centralizado, negrito)
+    const nomeLinha = [st.aluno_nome.toUpperCase(), st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
+    drawCenteredText(page, nomeLinha, y, 14.5, fontBold);
+    y -= 28;
 
-    // Área disponível para centralização vertical do corpo:
-    const topLimit = yName - 24;      // limite superior (logo abaixo do nome)
-    const bottomLimit = 120;          // limite inferior (acima das assinaturas)
-    const usableHeight = topLimit - bottomLimit;
+    // Parágrafo principal
+    const contentX = left + 28;
+    const contentWidth = width - (contentX + right + 28);
 
-    // Corpo do texto
     const inicioBR = formatBR(ev.data_inicio);
     const fimBR = formatBR(ev.data_fim);
     const periodo = (inicioBR || fimBR) ? `${inicioBR ?? ""}${inicioBR && fimBR ? " a " : ""}${fimBR ?? ""}` : "";
@@ -153,117 +194,115 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       paragraph = partes.join(" ");
     }
 
-    const contentX = left + 28;
-    const contentWidth = width - (contentX + right + 28);
-    const bodySize = 12.5, bodyLH = 17;
-    const bodyLines = wrapTextByWidth({ text: paragraph, font, size: bodySize, maxWidth: contentWidth });
-
-    // Centralização vertical: começamos de modo que o bloco inteiro fique no meio da área útil
-    const totalBodyHeight = bodyLines.length * bodyLH;
-    let y = topLimit - (usableHeight - totalBodyHeight) / 2;
-
-    // Desenho centralizado (horizontal) linha a linha
-    for (const line of bodyLines) {
-      const w = font.widthOfTextAtSize(line, bodySize);
-      const x = (width - w) / 2;
-      page.drawText(line, { x, y, size: bodySize, font });
+    const bodySize = 12.5;
+    const bodyLH = 17;
+    for (const line of wrapTextByWidth({ text: paragraph, font, size: bodySize, maxWidth: contentWidth })) {
+      page.drawText(line, { x: contentX, y, size: bodySize, font });
       y -= bodyLH;
     }
 
-    // Data/Lugar (direita, cinza)
+    // Data/Lugar à direita
+    y -= 18;
     const dataFormatada = formatBR(ev.data_fim || ev.data_inicio);
     const cidade = ev.cidade_uf?.trim() || ev.local?.trim();
     const linhaData = (cidade && dataFormatada) ? `${cidade}, ${dataFormatada}.` : (dataFormatada ? `${dataFormatada}.` : "");
-    if (linhaData) drawRightAlignedText(page, linhaData, bottomLimit + 14 + bodyLH, 12, font, right, gray);
-
-    // Assinaturas no rodapé
-    const lineY = 86;
-    const signCols = [
-      { name: s1name, role: s1role },
-      { name: s2name, role: s2role },
-      { name: (st.aluno_nome || "Participante").toUpperCase(), role: "Participante" },
-    ];
-    const usableWidth = width - left - right;
-    const colW = usableWidth / signCols.length;
-    for (let i = 0; i < signCols.length; i++) {
-      const x0 = left + i * colW + 16;
-      const x1 = left + (i + 1) * colW - 16;
-      page.drawLine({ start: { x: x0, y: lineY }, end: { x: x1, y: lineY }, thickness: 1, color: rgb(0,0,0) });
-      const cx = (x0 + x1) / 2;
-      const n = signCols[i].name;
-      const r = signCols[i].role;
-      const ns = 10.5, rs = 9.5;
-      page.drawText(n, { x: cx - fontBold.widthOfTextAtSize(n, ns)/2, y: lineY - 15, size: ns, font: fontBold });
-      page.drawText(r, { x: cx - font.widthOfTextAtSize(r, rs)/2, y: lineY - 30, size: rs, font });
+    if (linhaData) {
+      drawRightAlignedText(page, linhaData, y, 12, font, right, gray);
     }
 
-    /* =============================== VERSO =============================== */
+    // Assinaturas ao rodapé
+    drawSignaturesBlock(page, font, fontBold, {
+      y: 88,
+      leftMargin: left,
+      rightMargin: right,
+      titles: [
+        { name: s1name, role: s1role },
+        { name: s2name, role: s2role },
+        { name: (st.aluno_nome || "Participante").toUpperCase(), role: "Participante" },
+      ],
+    });
+
+    /** =============================== VERSO =================================== */
     const page2 = pdf.addPage([842, 595]);
     const { width: w2, height: h2 } = page2.getSize();
-    const m2 = 36, left2 = m2, right2 = m2;
+    const m2 = 36;
+    const left2 = m2;
+    const right2 = m2;
+
+    // moldura
+    page2.drawRectangle({
+      x: m2 / 2, y: m2 / 2,
+      width: w2 - m2, height: h2 - m2,
+      borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.8
+    });
+
+    // Áreas e coordenadas base
+    const topY = h2 - 72;                // topo do conteúdo
+    const authBaseY = 86;                // faixa de autorização acima do rodapé
+    const qrBoxSize = 120;               // tamanho do QR
+    const qrX = left2 + 10;
+    const qrY = m2 + 16;                 // canto inferior esquerdo
+
+    // Conteúdo Programático (texto_verso) no topo-esquerda
+    let y2 = topY;
     const contentX2 = left2 + 24;
     const contentW2 = w2 - (contentX2 + right2 + 24);
 
-    // Moldura
-    page2.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.85,0.85,0.85), borderWidth: 0.8 });
-
-    // Área superior (conteúdos)
-    let y2 = h2 - 82;
-
-    // Título "Conteúdo Programático:" e itens em lista (split por ';')
     if (ev.texto_verso && ev.texto_verso.trim()) {
-      page2.drawText("Conteúdo Programático:", { x: contentX2, y: y2, size: 12.5, font: fontBold });
-      y2 -= 18;
-
-      const raw = ev.texto_verso.replace(/\s*;\s*$/,"");
-      const items = raw.split(";").map(s => s.trim()).filter(Boolean);
-      for (const item of items) {
-        const line = `• ${item}${item.endsWith(".") ? "" : ";"}`;
-        const lines = wrapTextByWidth({ text: line, font, size: 12, maxWidth: contentW2 });
-        for (const ln of lines) {
-          page2.drawText(ln, { x: contentX2, y: y2, size: 12, font });
-          y2 -= 16;
+      // Se começar com "Conteúdo" destacamos título
+      const t = ev.texto_verso.trim();
+      const lines = t.split(/\r?\n/).filter(Boolean);
+      if (lines.length) {
+        // Se a primeira linha parece título, desenha em bold
+        if (/conte[uú]do/i.test(lines[0])) {
+          page2.drawText(lines[0], { x: contentX2, y: y2, size: 12.5, font: fontBold });
+          y2 -= 18;
+          lines.slice(1).forEach((L) => {
+            for (const ln of wrapTextByWidth({ text: L, font, size: 12, maxWidth: contentW2 })) {
+              page2.drawText(ln, { x: contentX2, y: y2, size: 12, font });
+              y2 -= 16;
+            }
+          });
+        } else {
+          for (const ln of wrapTextByWidth({ text: t, font, size: 12, maxWidth: contentW2 })) {
+            page2.drawText(ln, { x: contentX2, y: y2, size: 12, font });
+            y2 -= 16;
+          }
         }
       }
     }
 
-    // QR no canto inferior esquerdo
-    const qrSize = 120;
-    const qrX = left2 + 10;
-    const qrY = m2 + 18;
-    if (ev.qr_url && ev.qr_url.trim()) {
-      const qrPng = await QRCode.toBuffer(ev.qr_url.trim(), { type: "png", width: qrSize, margin: 1 });
-      const qrImg = await pdf.embedPng(qrPng);
-      page2.drawRectangle({ x: qrX - 6, y: qrY - 6, width: qrSize + 12, height: qrSize + 12, borderColor: red, borderWidth: 1.2 });
-      page2.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
-    }
-
-    // Rodapé (à direita)
-    const footerBaseY = m2 + 40;  // “Curso autorizado...” nesta linha
-    const totalY = footerBaseY + 16;  // TOTAL uma linha acima
-    const rightMargin = right2;
-
-    // TOTAL à direita (negrito)
+    // TOTAL no topo-direita
     const totalCarga = (st.carga_horaria || ev.carga_horaria || "").trim();
     if (totalCarga) {
-      drawRightAlignedText(page2, `TOTAL: ${totalCarga}`, totalY, 12.5, fontBold, rightMargin);
+      drawRightAlignedText(page2, `TOTAL: ${totalCarga}`, topY + 4, 12.5, fontBold, right2);
     }
 
-    // Curso autorizado... (à direita)
-    if (ev.autorizacao_texto && ev.autorizacao_texto.trim()) {
-      drawRightAlignedText(page2, ev.autorizacao_texto.trim(), footerBaseY, 12, font, rightMargin);
+    // QR no canto inferior esquerdo com borda
+    if (ev.qr_url && ev.qr_url.trim()) {
+      const qrPng = await QRCode.toBuffer(ev.qr_url.trim(), { type: "png", width: qrBoxSize, margin: 1 });
+      const qrImg = await pdf.embedPng(qrPng);
+      page2.drawRectangle({ x: qrX - 6, y: qrY - 6, width: qrBoxSize + 12, height: qrBoxSize + 12, borderColor: red, borderWidth: 1.2 });
+      page2.drawImage(qrImg, { x: qrX, y: qrY, width: qrBoxSize, height: qrBoxSize });
     }
 
-    // Responsável (linha abaixo, à direita)
+    // Faixa de autorização (central) e responsável (direita), ambos acima do rodapé
+    const autorizacao = (ev.autorizacao_texto || "").trim();
+    if (autorizacao) {
+      for (const ln of wrapTextByWidth({ text: autorizacao, font, size: 12, maxWidth: w2 * 0.7 })) {
+        drawCenteredText(page2, ln, authBaseY, 12, font);
+        // não quebramos múltiplas linhas para manter a faixa compacta
+      }
+    }
     if (ev.responsavel && ev.responsavel.trim()) {
-      drawRightAlignedText(page2, `Responsável: ${ev.responsavel.trim()}`, footerBaseY - 18, 12, font, rightMargin);
+      drawRightAlignedText(page2, `Responsável: ${ev.responsavel.trim()}`, authBaseY - 16, 12, font, right2);
     }
   }
 
   return await pdf.save();
 }
 
-/* ============================== HTTP handler ============================== */
+/** Handler HTTP -----------------------------------------------------------------------------*/
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = await req.json().catch(() => ({}));
