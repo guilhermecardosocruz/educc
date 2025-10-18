@@ -3,7 +3,6 @@ import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
 import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
-export const runtime = 'nodejs';
 
 type EventPayload = {
   id: string;
