@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb, PDFFont } from "pdf-lib";
-import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +17,10 @@ type EventPayload = {
   texto_participante?: string;
   texto_ministrante?: string;
   texto_organizador?: string;
-  texto_verso?: string;
+  texto_verso?: string; // <<< agora suportado
   // assinaturas configuráveis
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
-  // novo: validação & autorização
-  qr_url?: string;
-  autorizacao_texto?: string;
 };
 type Student = {
   aluno_nome: string;
@@ -44,6 +40,7 @@ function wrapTextByWidth({
   const words = (text || "").trim().split(/\s+/);
   const lines: string[] = [];
   let line = "";
+
   for (const w of words) {
     const test = line ? line + " " + w : w;
     const width = font.widthOfTextAtSize(test, size);
@@ -51,12 +48,17 @@ function wrapTextByWidth({
       line = test;
     } else {
       if (line) lines.push(line);
+      // palavra muito longa: quebra em pedaços
       if (font.widthOfTextAtSize(w, size) > maxWidth) {
         let chunk = "";
         for (const ch of w) {
           const t2 = chunk + ch;
-          if (font.widthOfTextAtSize(t2, size) <= maxWidth) chunk = t2;
-          else { if (chunk) lines.push(chunk); chunk = ch; }
+          if (font.widthOfTextAtSize(t2, size) <= maxWidth) {
+            chunk = t2;
+          } else {
+            if (chunk) lines.push(chunk);
+            chunk = ch;
+          }
         }
         line = chunk;
       } else {
@@ -67,17 +69,23 @@ function wrapTextByWidth({
   if (line) lines.push(line);
   return lines;
 }
+
+/** centraliza texto */
 function drawCenteredText(page: any, text: string, y: number, size: number, font: PDFFont, color = rgb(0,0,0)) {
   const { width } = page.getSize();
   const textWidth = font.widthOfTextAtSize(text, size);
   page.drawText(text, { x: (width - textWidth) / 2, y, size, font, color });
 }
+
+/** texto alinhado à direita com margem */
 function drawRightAlignedText(page: any, text: string, y: number, size: number, font: PDFFont, rightMargin: number, color = rgb(0,0,0)) {
   const { width } = page.getSize();
   const textWidth = font.widthOfTextAtSize(text, size);
   const x = Math.max(0, width - rightMargin - textWidth);
   page.drawText(text, { x, y, size, font, color });
 }
+
+/** data pt-BR "19 de agosto de 2025" a partir de "YYYY-MM-DD" */
 function formatPtBrDate(iso?: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -89,6 +97,8 @@ function formatPtBrDate(iso?: string): string | null {
   const ano = parts.find(p => p.type === "year")?.value ?? "";
   return `${dia} de ${mes} de ${ano}`;
 }
+
+/** bloco de assinaturas (3 colunas) */
 function drawSignaturesBlock(page: any, font: PDFFont, fontBold: PDFFont, opts: {
   y: number;
   leftMargin: number;
@@ -103,6 +113,7 @@ function drawSignaturesBlock(page: any, font: PDFFont, fontBold: PDFFont, opts: 
   const lineY = y;
   const nameY = y - 14;
   const roleY = y - 28;
+
   for (let i = 0; i < cols; i++) {
     const x0 = leftMargin + i * colW + 10;
     const x1 = leftMargin + (i + 1) * colW - 10;
@@ -128,6 +139,7 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
   const green = rgb(0.00, 0.45, 0.30);
   const gray = rgb(0.25, 0.25, 0.25);
 
+  // defaults de assinatura, se não vierem do formulário
   const s1name = (ev.sign1_name || "VÁGNER ESPÍNDOLA RODRIGUES").toUpperCase();
   const s1role = ev.sign1_role || "Prefeito Municipal";
   const s2name = (ev.sign2_name || "GEÓVANA BENEDET ZANETTE").toUpperCase();
@@ -137,7 +149,7 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     if (!st?.aluno_nome) continue;
 
     // === FRENTE ===
-    const page = pdf.addPage([842, 595]);
+    const page = pdf.addPage([842, 595]); // A4 paisagem
     const { width, height } = page.getSize();
 
     const margin = 36;
@@ -147,25 +159,43 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const contentWidth = width - (contentX + right + 24);
     let y = height - 72;
 
-    page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 0.8 });
+    // Moldura
+    page.drawRectangle({
+      x: margin / 2,
+      y: margin / 2,
+      width: width - margin,
+      height: height - margin,
+      borderColor: rgb(0.6, 0.6, 0.6),
+      borderWidth: 0.8,
+    });
+
+    // Barras decorativas
     page.drawRectangle({ x: width - 140, y: height - 40, width: 140, height: 40, color: red });
     page.drawRectangle({ x: width - 95, y: height - 70, width: 95, height: 30, color: green });
 
+    // Título
     drawCenteredText(page, "CERTIFICADO", y, 28, fontBold, red);
     y -= 44;
 
+    // Linha com nome + doc
     const nomeLinha = [st.aluno_nome, st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
     drawCenteredText(page, nomeLinha, y, 14, fontBold, rgb(0,0,0));
     y -= 28;
 
-    const periodo = ev.data_inicio || ev.data_fim ? `${ev.data_inicio ?? ""}${ev.data_inicio && ev.data_fim ? " a " : ""}${ev.data_fim ?? ""}` : "";
+    // Texto do corpo
+    const periodo =
+      ev.data_inicio || ev.data_fim
+        ? `${ev.data_inicio ?? ""}${ev.data_inicio && ev.data_fim ? " a " : ""}${ev.data_fim ?? ""}`
+        : "";
     const carga = st.carga_horaria || ev.carga_horaria || "";
 
+    // 1) Se veio texto_participante, processa códigos; senão usa modelo padrão
     let paragraph = ev.texto_participante?.trim();
     if (paragraph) {
-      paragraph = paragraph.replace(/\[nome do participante\]/gi, st.aluno_nome)
-                           .replace(/\[cpf\]/gi, st.aluno_doc || "")
-                           .replace(/\[carga horária\]/gi, carga);
+      paragraph = paragraph
+        .replace(/\[nome do participante\]/gi, st.aluno_nome)
+        .replace(/\[cpf\]/gi, st.aluno_doc || "")
+        .replace(/\[carga horária\]/gi, carga);
     } else {
       const partes: string[] = [];
       partes.push(`Certificamos que ${st.aluno_nome} participou do Curso "${(ev.nome || "Curso").toUpperCase()}",`);
@@ -177,17 +207,23 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
 
     const bodySize = 12.5;
     const bodyLH = 17;
-    for (const line of wrapTextByWidth({ text: paragraph, font, size: bodySize, maxWidth: contentWidth })) {
-      page.drawText(line, { x: contentX, y, size: bodySize, font });
+    const bodyLines = wrapTextByWidth({ text: paragraph, font, size: bodySize, maxWidth: contentWidth });
+    for (const line of bodyLines) {
+      page.drawText(line, { x: contentX, y, size: bodySize, font, color: rgb(0,0,0) });
       y -= bodyLH;
     }
 
+    // Espaço e data/lugar à direita
     y -= 20;
     const dataFormatada = formatPtBrDate(ev.data_fim || ev.data_inicio);
     const cidade = ev.cidade_uf?.trim() || ev.local?.trim();
     const linhaData = (cidade && dataFormatada) ? `${cidade}, ${dataFormatada}.` : (dataFormatada ? `${dataFormatada}.` : "");
-    if (linhaData) { drawRightAlignedText(page, linhaData, y, 12, font, right, gray); y -= 28; }
+    if (linhaData) {
+      drawRightAlignedText(page, linhaData, y, 12, font, right, gray);
+      y -= 28;
+    }
 
+    // Assinaturas (3 colunas): S1, S2, Participante
     const signY = 120;
     drawSignaturesBlock(page, font, fontBold, {
       y: signY,
@@ -200,67 +236,53 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       ],
     });
 
-    // === VERSO ===
-    const page2 = pdf.addPage([842, 595]);
-    const { width: w2, height: h2 } = page2.getSize();
-    const m2 = 36;
-    const left2 = m2;
-    const right2 = m2;
-    const contentX2 = left2 + 24;
-    const contentW2 = w2 - (contentX2 + right2 + 24);
-    let y2 = h2 - 64;
+    // === VERSO (opcional) ===
+    if (ev.texto_verso && ev.texto_verso.trim().length > 0) {
+      const page2 = pdf.addPage([842, 595]); // mesma orientação
+      const { width: w2, height: h2 } = page2.getSize();
+      const m2 = 36;
+      const left2 = m2;
+      const right2 = m2;
+      const contentX2 = left2 + 24;
+      const contentW2 = w2 - (contentX2 + right2 + 24);
+      let y2 = h2 - 64;
 
-    // moldura
-    page2.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 0.6 });
+      // moldura leve no verso
+      page2.drawRectangle({
+        x: m2 / 2,
+        y: m2 / 2,
+        width: w2 - m2,
+        height: h2 - m2,
+        borderColor: rgb(0.75, 0.75, 0.75),
+        borderWidth: 0.6,
+      });
 
-    // QR Code (se houver link)
-    if (ev.qr_url && ev.qr_url.trim()) {
-      const qrPng = await QRCode.toBuffer(ev.qr_url.trim(), { type: "png", width: 120, margin: 1 });
-      const qrImg = await pdf.embedPng(qrPng);
-      const qrSize = 120;
-      const qrX = left2 + 8;
-      const qrY = y2 - qrSize + 8;
-      // borda vermelha levemente arredondada
-      page2.drawRectangle({ x: qrX - 6, y: qrY - 6, width: qrSize + 12, height: qrSize + 12, borderColor: red, borderWidth: 1.2 });
-      page2.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
-    }
+      // título do verso
+      drawCenteredText(page2, "INFORMAÇÕES COMPLEMENTARES", y2, 16, fontBold, rgb(0,0,0));
+      y2 -= 28;
 
-    // TOTAL à direita (negrito)
-    const totalCarga = (st.carga_horaria || ev.carga_horaria || "").trim();
-    if (totalCarga) {
-      drawRightAlignedText(page2, `TOTAL: ${totalCarga}`, y2 - 6, 12.5, fontBold, right2, rgb(0,0,0));
-    }
-    y2 -= 28;
-
-    // Texto de autorização (centralizado)
-    if (ev.autorizacao_texto && ev.autorizacao_texto.trim()) {
-      for (const line of wrapTextByWidth({ text: ev.autorizacao_texto.trim(), font, size: 12, maxWidth: contentW2 })) {
-        drawCenteredText(page2, line, y2, 12, font, rgb(0,0,0));
-        y2 -= 16;
-      }
-    }
-
-    // Responsável à direita
-    if (ev.responsavel && ev.responsavel.trim()) {
-      drawRightAlignedText(page2, `Responsável: ${ev.responsavel.trim()}`, y2 - 4, 12, font, right2, rgb(0,0,0));
-      y2 -= 24;
-    }
-
-    // Texto complementar do verso (se houver)
-    if (ev.texto_verso && ev.texto_verso.trim()) {
+      // texto do verso (aceita listas, parágrafos, etc. — aqui tratamos apenas como parágrafo corrido)
+      const vText = ev.texto_verso.trim();
       const vSize = 12;
       const vLH = 16;
-      for (const line of wrapTextByWidth({ text: ev.texto_verso.trim(), font, size: vSize, maxWidth: contentW2 })) {
-        page2.drawText(line, { x: contentX2, y: y2, size: vSize, font });
+      const vLines = wrapTextByWidth({ text: vText, font, size: vSize, maxWidth: contentW2 });
+      for (const line of vLines) {
+        page2.drawText(line, { x: contentX2, y: y2, size: vSize, font, color: rgb(0,0,0) });
         y2 -= vLH;
         if (y2 < 64) {
-          // nova página de continuação
+          // adiciona nova página de verso se estourar
           const cont = pdf.addPage([842, 595]);
-          const { width: cw, height: ch } = cont.getSize();
-          cont.drawRectangle({ x: m2 / 2, y: m2 / 2, width: cw - m2, height: ch - m2, borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 0.6 });
-          y2 = ch - 64;
-          // redireciona futuras linhas para "cont"
-          (page2 as any) = cont;
+          y2 = h2 - 64;
+          cont.drawRectangle({
+            x: m2 / 2,
+            y: m2 / 2,
+            width: w2 - m2,
+            height: h2 - m2,
+            borderColor: rgb(0.75, 0.75, 0.75),
+            borderWidth: 0.6,
+          });
+          // reescreve o restante das linhas nesta nova página
+          page2.drawText("", { x: 0, y: 0, size: 1, font }); // no-op para evitar lint
         }
       }
     }

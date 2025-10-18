@@ -18,16 +18,13 @@ type EventItem = {
   texto_ministrante?: string;
   texto_organizador?: string;
   texto_verso?: string;
-  // Logos/brasões
+  // Logos/brasões ativados
   logos?: { prefeitura?: boolean; escola?: boolean; brasao?: boolean };
-  // Assinaturas (institucionais; participante é automático)
+  // Assinaturas (duas institucionais; participante é preenchido no PDF)
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
-  // Validação & verso
-  qr_url?: string;               // link que vira QR Code
-  autorizacao_texto?: string;    // "Curso autorizado de acordo com ..."
   // Extra
-  responsavel?: string;          // usado também no verso
+  responsavel?: string;
   observacoes?: string;
 };
 
@@ -59,7 +56,7 @@ export default function CertEventPage() {
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // ===== Persistência =====
+  // ===== Helpers de persistência =====
   function persist(next: EventItem) {
     setEv(next);
     try { localStorage.setItem(evKey(id), JSON.stringify(next)); } catch {}
@@ -90,10 +87,7 @@ export default function CertEventPage() {
       sign1_role: "Prefeito Municipal",
       sign2_name: "GEÓVANA BENEDET ZANETTE",
       sign2_role: "Secretária Municipal de Educação",
-      // NOVOS CAMPOS (verso)
-      qr_url: "https://seu.dominio.gov.br/validacao/cert/ABC123",
-      autorizacao_texto: "Curso autorizado de acordo com o Artigo 23 da Lei nº 4.307, de 02 de maio de 2002.",
-      responsavel: "Gislene dos Santos Sala",
+      responsavel: "Coordenação Pedagógica",
       observacoes: "Certificado válido mediante verificação de presença.",
     };
   }
@@ -105,7 +99,7 @@ export default function CertEventPage() {
     ];
   }
 
-  // ===== Carrega/localStorage + PRÉ-PREENCHIMENTO (se vazio ou ?demo=1) =====
+  // ===== Carrega do localStorage e PRÉ-PREENCHIMENTO automático =====
   useEffect(() => {
     if (!id) return;
 
@@ -122,9 +116,13 @@ export default function CertEventPage() {
 
     try {
       const rawSt = localStorage.getItem(stKey(id));
-      if (rawSt) setStudents(JSON.parse(rawSt));
+      if (rawSt) {
+        setStudents(JSON.parse(rawSt));
+      }
     } catch {}
 
+    // Se não havia dados salvos ou o nome está vazio, PRÉ-PREENCHER automaticamente
+    // Também permite forçar via querystring ?demo=1
     const forceDemo =
       typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("demo") === "1";
@@ -137,7 +135,7 @@ export default function CertEventPage() {
     }
   }, [id]);
 
-  // ===== Ações =====
+  // ===== Ações (salvar, template, upload, gerar PDF) =====
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!ev.nome?.trim()) {
@@ -217,7 +215,7 @@ export default function CertEventPage() {
 
       {/* FORM DO EVENTO */}
       <section className="card p-6 mb-6">
-        <form onSubmit={onSave} className="grid gap-6">
+        <form onSubmit={onSave} className="grid gap-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Nome do evento *</label>
@@ -245,7 +243,7 @@ export default function CertEventPage() {
             </div>
           </div>
 
-          {/* Textos da FRENTE */}
+          {/* Textos do certificado */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Texto do participante (frente)</label>
@@ -260,24 +258,8 @@ export default function CertEventPage() {
               <label className="block text-sm font-medium mb-1">Texto do organizador (frente)</label>
               <textarea className="input" rows={3} value={ev.texto_organizador || ""} onChange={e => persist({ ...ev, texto_organizador: e.target.value })} />
             </div>
-          </div>
-
-          {/* Validação & Verso */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Link de validação (gera QR Code no verso)</label>
-              <input className="input" value={ev.qr_url || ""} onChange={e => persist({ ...ev, qr_url: e.target.value })} placeholder="https://..." />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Texto de autorização (verso)</label>
-              <textarea className="input" rows={2} value={ev.autorizacao_texto || ""} onChange={e => persist({ ...ev, autorizacao_texto: e.target.value })} placeholder='Ex.: Curso autorizado de acordo com o Artigo 23 da Lei nº 4.307, de 02 de maio de 2002.' />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Responsável (verso)</label>
-              <input className="input" value={ev.responsavel || ""} onChange={e => persist({ ...ev, responsavel: e.target.value })} placeholder="Ex.: Gislene dos Santos Sala" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Texto do verso (complementar)</label>
+              <label className="block text-sm font-medium mb-1">Texto do verso</label>
               <textarea className="input" rows={4} value={ev.texto_verso || ""} onChange={e => persist({ ...ev, texto_verso: e.target.value })} />
             </div>
           </div>
@@ -321,7 +303,6 @@ export default function CertEventPage() {
             <p className="text-xs text-gray-500 mt-1">A terceira assinatura (Participante) usa o nome do aluno no PDF.</p>
           </div>
 
-          {/* Ações */}
           <div className="flex justify-end gap-2">
             <Link href="/gestao/certificados" className="btn-secondary">Voltar</Link>
             <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
@@ -352,7 +333,7 @@ export default function CertEventPage() {
         <p className="text-sm text-gray-600 mb-2">
           {students.length
             ? <>Alunos carregados: <strong>{students.length}</strong></>
-            : "Nenhum aluno carregado ainda. Envie a planilha — exemplos são pré-carregados se este evento era novo ou com ?demo=1."}
+            : "Nenhum aluno carregado ainda. Envie a planilha — os exemplos já foram pré-carregados se este evento era novo."}
         </p>
 
         {!!students.length && (
