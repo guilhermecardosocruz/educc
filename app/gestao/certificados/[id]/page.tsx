@@ -6,17 +6,28 @@ import Link from "next/link";
 
 type EventItem = {
   id: string;
+  // Identidade do curso
   nome: string;
-  descricao?: string;
-  data_inicio?: string;
-  data_fim?: string;
   local?: string;
-  carga_horaria?: string;
+  cidade_uf?: string;            // ex.: "Criciúma (SC)"
+  data_inicio?: string;          // YYYY-MM-DD
+  data_fim?: string;             // YYYY-MM-DD
+  carga_horaria?: string;        // ex.: "08h"
+  // Textos do certificado (frente/verso) com códigos
+  texto_participante?: string;   // usa [nome do participante], [cpf], [carga horária]
+  texto_ministrante?: string;
+  texto_organizador?: string;
+  texto_verso?: string;
+  // Logos/brasões ativados
+  logos?: { prefeitura?: boolean; escola?: boolean; brasao?: boolean };
+  // Assinaturas (duas institucionais; participante é preenchido no PDF)
+  sign1_name?: string; sign1_role?: string;
+  sign2_name?: string; sign2_role?: string;
+  // Extra
   responsavel?: string;
-  tags?: string;
-  status?: string;
   observacoes?: string;
 };
+
 type Student = {
   aluno_nome: string;
   aluno_doc?: string;
@@ -26,7 +37,6 @@ type Student = {
 };
 
 function useEventIdFromPath(): string {
-  // /gestao/certificados/[id]
   const parts = typeof window !== "undefined" ? window.location.pathname.split("/") : [];
   return parts[parts.length - 1] || "";
 }
@@ -39,9 +49,7 @@ export default function CertEventPage() {
 
   const [ev, setEv] = useState<EventItem>(() => ({
     id, nome: "",
-    descricao: "", data_inicio: "", data_fim: "",
-    local: "", carga_horaria: "", responsavel: "",
-    tags: "", status: "", observacoes: ""
+    logos: { prefeitura: true, escola: true, brasao: true },
   }));
   const [students, setStudents] = useState<Student[]>([]);
   const [saving, setSaving] = useState(false);
@@ -51,14 +59,8 @@ export default function CertEventPage() {
   // carrega do localStorage
   useEffect(() => {
     if (!id) return;
-    try {
-      const raw = localStorage.getItem(evKey(id));
-      if (raw) setEv(JSON.parse(raw));
-    } catch {}
-    try {
-      const raw = localStorage.getItem(stKey(id));
-      if (raw) setStudents(JSON.parse(raw));
-    } catch {}
+    try { const raw = localStorage.getItem(evKey(id)); if (raw) setEv(JSON.parse(raw)); } catch {}
+    try { const raw = localStorage.getItem(stKey(id)); if (raw) setStudents(JSON.parse(raw)); } catch {}
   }, [id]);
 
   function persist(next: EventItem) {
@@ -73,10 +75,9 @@ export default function CertEventPage() {
       return;
     }
     setSaving(true);
-    // sem backend por enquanto — apenas persiste localmente
     persist({ ...ev, id });
     setSaving(false);
-    alert("Evento salvo localmente.");
+    alert("Evento salvo.");
   }
 
   async function downloadTemplate() {
@@ -107,25 +108,20 @@ export default function CertEventPage() {
       try { localStorage.setItem(stKey(id), JSON.stringify(alunos)); } catch {}
     } finally {
       setUploading(false);
-      (document.getElementById("upload-xlsx") as HTMLInputElement | null)?.value && ((document.getElementById("upload-xlsx") as HTMLInputElement).value = "");
+      const el = document.getElementById("upload-xlsx") as HTMLInputElement | null;
+      if (el) el.value = "";
     }
   }
 
   async function gerarPDF() {
-    if (!ev.nome?.trim()) {
-      alert("Preencha o nome do evento antes de gerar.");
-      return;
-    }
-    if (!students.length) {
-      alert("Nenhum aluno carregado. Envie a planilha primeiro.");
-      return;
-    }
+    if (!ev.nome?.trim()) { alert("Preencha o nome do evento antes de gerar."); return; }
+    if (!students.length) { alert("Nenhum aluno carregado. Envie a planilha primeiro."); return; }
     setGenerating(true);
     try {
       const res = await fetch(`/api/cert-events/${id}/generate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ event: ev, students })
+        body: JSON.stringify({ event: ev, students }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -143,27 +139,35 @@ export default function CertEventPage() {
     }
   }
 
+  const codigoHint = (
+    <span className="text-xs text-gray-500">
+      Use os códigos: <code>[nome do participante]</code>, <code>[cpf]</code>, <code>[carga horária]</code>.
+    </span>
+  );
+
   return (
-    <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+    <main className="min-h-screen p-6 lg:p-10 max-w-5xl mx-auto">
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Evento: {ev?.nome || "Novo"}</h1>
         <Link href="/gestao/certificados" className="btn-primary">Voltar</Link>
       </header>
 
-      {/* FORM DO EVENTO */}
+      {/* FORM DO EVENTO (padrão para o certificado) */}
       <section className="card p-6 mb-6">
         <form onSubmit={onSave} className="grid gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Nome do evento *</label>
-            <input className="input" value={ev.nome} onChange={e => persist({ ...ev, nome: e.target.value })} required />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Descrição</label>
-            <textarea className="input" rows={4} value={ev.descricao || ""} onChange={e => persist({ ...ev, descricao: e.target.value })} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Nome do evento *</label>
+              <input className="input" value={ev.nome} onChange={e => persist({ ...ev, nome: e.target.value })} required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Local</label>
+              <input className="input" value={ev.local || ""} onChange={e => persist({ ...ev, local: e.target.value })} placeholder="Auditório, Escola..." />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Cidade/UF</label>
+              <input className="input" value={ev.cidade_uf || ""} onChange={e => persist({ ...ev, cidade_uf: e.target.value })} placeholder="Ex.: Criciúma (SC)" />
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1">Data início</label>
               <input className="input" type="date" value={ev.data_inicio || ""} onChange={e => persist({ ...ev, data_inicio: e.target.value })} />
@@ -172,38 +176,83 @@ export default function CertEventPage() {
               <label className="block text-sm font-medium mb-1">Data fim</label>
               <input className="input" type="date" value={ev.data_fim || ""} onChange={e => persist({ ...ev, data_fim: e.target.value })} />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Local</label>
-              <input className="input" value={ev.local || ""} onChange={e => persist({ ...ev, local: e.target.value })} />
-            </div>
             <div>
               <label className="block text-sm font-medium mb-1">Carga horária</label>
-              <input className="input" placeholder="Ex.: 8h" value={ev.carga_horaria || ""} onChange={e => persist({ ...ev, carga_horaria: e.target.value })} />
+              <input className="input" placeholder="Ex.: 08h" value={ev.carga_horaria || ""} onChange={e => persist({ ...ev, carga_horaria: e.target.value })} />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {/* Textos do certificado */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Texto do participante (frente)</label>
+              <textarea className="input" rows={4} value={ev.texto_participante || ""} onChange={e => persist({ ...ev, texto_participante: e.target.value })} placeholder='Ex.: "Certificamos que [nome do participante] participou do curso ... com carga horária de [carga horária]."' />
+              {codigoHint}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Texto do ministrante (frente)</label>
+              <textarea className="input" rows={3} value={ev.texto_ministrante || ""} onChange={e => persist({ ...ev, texto_ministrante: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Texto do organizador (frente)</label>
+              <textarea className="input" rows={3} value={ev.texto_organizador || ""} onChange={e => persist({ ...ev, texto_organizador: e.target.value })} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Texto do verso</label>
+              <textarea className="input" rows={4} value={ev.texto_verso || ""} onChange={e => persist({ ...ev, texto_verso: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Logos/brasões */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Logos/Brasões</label>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!ev.logos?.prefeitura} onChange={e => persist({ ...ev, logos: { ...(ev.logos||{}), prefeitura: e.target.checked } })} />
+                Prefeitura
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!ev.logos?.escola} onChange={e => persist({ ...ev, logos: { ...(ev.logos||{}), escola: e.target.checked } })} />
+                Escola
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!ev.logos?.brasao} onChange={e => persist({ ...ev, logos: { ...(ev.logos||{}), brasao: e.target.checked } })} />
+                Brasão do Município
+              </label>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Os logos já têm posições definidas no PDF.</p>
+          </div>
+
+          {/* Assinaturas */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Assinaturas (nome e cargo)</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium">Assinatura 1 — Nome</label>
+                <input className="input" value={ev.sign1_name || ""} onChange={e => persist({ ...ev, sign1_name: e.target.value })} placeholder="Ex.: VÁGNER ESPÍNDOLA RODRIGUES" />
+                <label className="block text-xs font-medium mt-2">Assinatura 1 — Cargo</label>
+                <input className="input" value={ev.sign1_role || ""} onChange={e => persist({ ...ev, sign1_role: e.target.value })} placeholder="Ex.: Prefeito Municipal" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium">Assinatura 2 — Nome</label>
+                <input className="input" value={ev.sign2_name || ""} onChange={e => persist({ ...ev, sign2_name: e.target.value })} placeholder="Ex.: GEÓVANA BENEDET ZANETTE" />
+                <label className="block text-xs font-medium mt-2">Assinatura 2 — Cargo</label>
+                <input className="input" value={ev.sign2_role || ""} onChange={e => persist({ ...ev, sign2_role: e.target.value })} placeholder="Ex.: Secretária Municipal de Educação" />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">A terceira assinatura (Participante) usa o nome do aluno no PDF.</p>
+          </div>
+
+          {/* Extra */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Responsável</label>
               <input className="input" value={ev.responsavel || ""} onChange={e => persist({ ...ev, responsavel: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Tags</label>
-              <input className="input" placeholder="formação, oficina" value={ev.tags || ""} onChange={e => persist({ ...ev, tags: e.target.value })} />
+              <label className="block text-sm font-medium mb-1">Observações</label>
+              <input className="input" value={ev.observacoes || ""} onChange={e => persist({ ...ev, observacoes: e.target.value })} />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Status</label>
-            <input className="input" placeholder="rascunho, ativo" value={ev.status || ""} onChange={e => persist({ ...ev, status: e.target.value })} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Observações</label>
-            <textarea className="input" rows={3} value={ev.observacoes || ""} onChange={e => persist({ ...ev, observacoes: e.target.value })} />
           </div>
 
           <div className="flex justify-end gap-2">

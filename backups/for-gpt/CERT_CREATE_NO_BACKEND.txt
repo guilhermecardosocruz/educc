@@ -1,0 +1,307 @@
+
+===== app/gestao/certificados/page.tsx =====
+1 "use client";
+2 
+3 export const dynamic = "force-dynamic";
+4 
+5 import Link from "next/link";
+6 import { useEffect, useMemo, useState } from "react";
+7 
+8 type CertEvent = {
+9   id: string;
+10   nome: string; // obrigatório
+11   descricao?: string;
+12   data_inicio?: string;
+13   data_fim?: string;
+14   local?: string;
+15   carga_horaria?: string;
+16   responsavel?: string;
+17   tags?: string;
+18   status?: string;
+19   observacoes?: string;
+20   createdAt: string;
+21 };
+22 
+23 const LS_KEY = "certEvents";
+24 
+25 function loadEvents(): CertEvent[] {
+26   if (typeof window === "undefined") return [];
+27   try {
+28     const raw = localStorage.getItem(LS_KEY);
+29     if (!raw) return [];
+30     const parsed = JSON.parse(raw);
+31     return Array.isArray(parsed) ? parsed : [];
+32   } catch {
+33     return [];
+34   }
+35 }
+36 
+37 function saveEvents(list: CertEvent[]) {
+38   try {
+39     localStorage.setItem(LS_KEY, JSON.stringify(list));
+40   } catch {}
+41 }
+42 
+43 export default function GestaoCertificadosPage() {
+44   const [open, setOpen] = useState(false);
+45   const [events, setEvents] = useState<CertEvent[]>([]);
+46   const [saving, setSaving] = useState(false);
+47   const [error, setError] = useState<string | null>(null);
+48 
+49   // campos do formulário (apenas "nome" é obrigatório)
+50   const [nome, setNome] = useState("");
+51   const [descricao, setDescricao] = useState("");
+52   const [data_inicio, setDataInicio] = useState("");
+53   const [data_fim, setDataFim] = useState("");
+54   const [local, setLocal] = useState("");
+55   const [carga_horaria, setCargaHoraria] = useState("");
+56   const [responsavel, setResponsavel] = useState("");
+57   const [tags, setTags] = useState("");
+58   const [status, setStatus] = useState("");
+59   const [observacoes, setObservacoes] = useState("");
+60 
+61   useEffect(() => {
+62     setEvents(loadEvents().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
+63   }, []);
+64 
+65   const canCreate = useMemo(() => nome.trim().length > 0 && !saving, [nome, saving]);
+66 
+67   function resetForm() {
+68     setNome("");
+69     setDescricao("");
+70     setDataInicio("");
+71     setDataFim("");
+72     setLocal("");
+73     setCargaHoraria("");
+74     setResponsavel("");
+75     setTags("");
+76     setStatus("");
+77     setObservacoes("");
+78     setError(null);
+79   }
+80 
+81   async function onCreate(e: React.FormEvent) {
+82     e.preventDefault();
+83     setError(null);
+84     if (!nome.trim()) {
+85       setError("Informe o nome do evento");
+86       return;
+87     }
+88     setSaving(true);
+89     try {
+90       const id = `${Date.now()}`;
+91       const item: CertEvent = {
+92         id,
+93         nome: nome.trim(),
+94         descricao: descricao || undefined,
+95         data_inicio: data_inicio || undefined,
+96         data_fim: data_fim || undefined,
+97         local: local || undefined,
+98         carga_horaria: carga_horaria || undefined,
+99         responsavel: responsavel || undefined,
+100         tags: tags || undefined,
+101         status: status || undefined,
+102         observacoes: observacoes || undefined,
+103         createdAt: new Date().toISOString(),
+104       };
+105       const next = [item, ...events];
+106       setEvents(next);
+107       saveEvents(next);
+108       setOpen(false);
+109       resetForm();
+110     } finally {
+111       setSaving(false);
+112     }
+113   }
+114 
+115   return (
+116     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
+117       <header className="flex items-center justify-between mb-6">
+118         <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
+119         <Link href="/gestao" className="btn-primary">Voltar</Link>
+120       </header>
+121 
+122       <section className="card p-6">
+123         <div className="mb-4 flex items-center gap-3">
+124           <button type="button" className="btn-primary" onClick={() => setOpen(true)}>
+125             Adicionar novo evento
+126           </button>
+127         </div>
+128 
+129         {/* Lista */}
+130         {events.length === 0 ? (
+131           <p className="text-gray-600">Nenhum evento criado ainda.</p>
+132         ) : (
+133           <ul className="space-y-2">
+134             {events.map((ev) => (
+135               <li key={ev.id}>
+136                 <Link
+137                   href={`/gestao/certificados/${ev.id}`}
+138                   className="block border rounded-lg px-4 py-3 hover:bg-gray-50 transition"
+139                 >
+140                   <div className="font-medium">{ev.nome}</div>
+141                   <div className="text-xs text-gray-500">
+142                     {ev.data_inicio || ev.data_fim
+143                       ? `${ev.data_inicio || "?"} — ${ev.data_fim || "?"}`
+144                       : "Sem período definido"}
+145                   </div>
+146                 </Link>
+147               </li>
+148             ))}
+149           </ul>
+150         )}
+151       </section>
+152 
+153       {/* Modal */}
+154       {open && (
+155         <div className="fixed inset-0 z-50">
+156           <div
+157             className="absolute inset-0 bg-black/30"
+158             onClick={() => setOpen(false)}
+159             aria-hidden="true"
+160           />
+161           <div className="absolute inset-0 flex items-center justify-center p-4">
+162             <div className="w-full max-w-xl rounded-xl bg-white shadow-lg">
+163               <form onSubmit={onCreate}>
+164                 <div className="px-5 py-4 border-b flex items-center justify-between">
+165                   <h2 className="text-lg font-semibold">Novo evento</h2>
+166                   <button
+167                     type="button"
+168                     className="h-8 px-3 rounded-md border hover:bg-gray-50"
+169                     onClick={() => setOpen(false)}
+170                   >
+171                     Fechar
+172                   </button>
+173                 </div>
+174 
+175                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+176                   <div className="md:col-span-2">
+177                     <label className="text-sm font-medium">Nome do evento *</label>
+178                     <input
+179                       className="mt-1 w-full rounded-md border px-3 py-2"
+180                       value={nome}
+181                       onChange={(e) => setNome(e.target.value)}
+182                       placeholder="Ex.: Semana Pedagógica 2025"
+183                       required
+184                     />
+185                   </div>
+186 
+187                   <div className="md:col-span-2">
+188                     <label className="text-sm font-medium">Descrição</label>
+189                     <textarea
+190                       className="mt-1 w-full rounded-md border px-3 py-2"
+191                       rows={3}
+192                       value={descricao}
+193                       onChange={(e) => setDescricao(e.target.value)}
+194                       placeholder="Breve descrição do evento"
+195                     />
+196                   </div>
+197 
+198                   <div>
+199                     <label className="text-sm font-medium">Data início</label>
+200                     <input
+201                       type="date"
+202                       className="mt-1 w-full rounded-md border px-3 py-2"
+203                       value={data_inicio}
+204                       onChange={(e) => setDataInicio(e.target.value)}
+205                     />
+206                   </div>
+207                   <div>
+208                     <label className="text-sm font-medium">Data fim</label>
+209                     <input
+210                       type="date"
+211                       className="mt-1 w-full rounded-md border px-3 py-2"
+212                       value={data_fim}
+213                       onChange={(e) => setDataFim(e.target.value)}
+214                     />
+215                   </div>
+216 
+217                   <div>
+218                     <label className="text-sm font-medium">Local</label>
+219                     <input
+220                       className="mt-1 w-full rounded-md border px-3 py-2"
+221                       value={local}
+222                       onChange={(e) => setLocal(e.target.value)}
+223                       placeholder="Auditório, sala, endereço…"
+224                     />
+225                   </div>
+226                   <div>
+227                     <label className="text-sm font-medium">Carga horária</label>
+228                     <input
+229                       className="mt-1 w-full rounded-md border px-3 py-2"
+230                       value={carga_horaria}
+231                       onChange={(e) => setCargaHoraria(e.target.value)}
+232                       placeholder="Ex.: 8h"
+233                     />
+234                   </div>
+235 
+236                   <div>
+237                     <label className="text-sm font-medium">Responsável</label>
+238                     <input
+239                       className="mt-1 w-full rounded-md border px-3 py-2"
+240                       value={responsavel}
+241                       onChange={(e) => setResponsavel(e.target.value)}
+242                       placeholder="Nome/contato"
+243                     />
+244                   </div>
+245                   <div>
+246                     <label className="text-sm font-medium">Tags</label>
+247                     <input
+248                       className="mt-1 w-full rounded-md border px-3 py-2"
+249                       value={tags}
+250                       onChange={(e) => setTags(e.target.value)}
+251                       placeholder="Ex.: formação, oficina"
+252                     />
+253                   </div>
+254 
+255                   <div>
+256                     <label className="text-sm font-medium">Status</label>
+257                     <input
+258                       className="mt-1 w-full rounded-md border px-3 py-2"
+259                       value={status}
+260                       onChange={(e) => setStatus(e.target.value)}
+261                       placeholder="Ex.: rascunho, ativo"
+262                     />
+263                   </div>
+264 
+265                   <div className="md:col-span-2">
+266                     <label className="text-sm font-medium">Observações</label>
+267                     <textarea
+268                       className="mt-1 w-full rounded-md border px-3 py-2"
+269                       rows={3}
+270                       value={observacoes}
+271                       onChange={(e) => setObservacoes(e.target.value)}
+272                       placeholder="Observações gerais"
+273                     />
+274                   </div>
+275 
+276                   {error ? <p className="md:col-span-2 text-sm text-red-600">{error}</p> : null}
+277                 </div>
+278 
+279                 <div className="px-5 py-4 border-t flex items-center justify-end gap-3">
+280                   <button
+281                     type="button"
+282                     className="h-10 px-4 rounded-md border hover:bg-gray-50"
+283                     onClick={() => { setOpen(false); }}
+284                   >
+285                     Cancelar
+286                   </button>
+287                   <button
+288                     type="submit"
+289                     disabled={!canCreate}
+290                     className="btn-primary disabled:opacity-60"
+291                   >
+292                     {saving ? "Criando..." : "Criar"}
+293                   </button>
+294                 </div>
+295               </form>
+296             </div>
+297           </div>
+298         </div>
+299       )}
+300     </main>
+301   );
+302 }
+
+===== components/CreateCertEventModal.tsx =====
+[MISSING] components/CreateCertEventModal.tsx

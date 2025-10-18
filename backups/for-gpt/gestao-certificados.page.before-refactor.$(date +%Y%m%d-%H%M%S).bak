@@ -3,13 +3,22 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import CreateCertEventModal from "@/components/CreateCertEventModal";
 
 type CertEvent = {
   id: string;
-  nome: string;           // obrigatório
+  nome: string; // obrigatório
+  descricao?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  local?: string;
+  carga_horaria?: string;
+  responsavel?: string;
+  tags?: string;
+  status?: string;
+  observacoes?: string;
   createdAt: string;
 };
 
@@ -28,7 +37,9 @@ function loadEvents(): CertEvent[] {
 }
 
 function saveEvents(list: CertEvent[]) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(list)); } catch {}
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(list));
+  } catch {}
 }
 
 export default function GestaoCertificadosPage() {
@@ -41,17 +52,23 @@ export default function GestaoCertificadosPage() {
   }, []);
 
   function handleCreate({ id, nome }: { id: string; nome: string }) {
-    const item: CertEvent = { id, nome, createdAt: new Date().toISOString() };
+    // cria somente com nome; demais campos ficam para edição na página do evento
+    const item: CertEvent = {
+      id,
+      nome,
+      createdAt: new Date().toISOString(),
+    };
     const next = [item, ...events];
     setEvents(next);
     saveEvents(next);
+    // redireciona para a página de edição/geração de certificados do evento
     router.push(`/gestao/certificados/${id}`);
   }
 
   return (
     <main className="min-h-screen p-6 lg:p-10 max-w-4xl mx-auto">
       <header className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Certificados — Eventos</h1>
+        <h1 className="text-2xl font-semibold">Requisitos para Certificados</h1>
         <Link href="/gestao" className="btn-primary">Voltar</Link>
       </header>
 
@@ -62,6 +79,7 @@ export default function GestaoCertificadosPage() {
           </button>
         </div>
 
+        {/* Lista */}
         {events.length === 0 ? (
           <p className="text-gray-600">Nenhum evento criado ainda.</p>
         ) : (
@@ -74,7 +92,7 @@ export default function GestaoCertificadosPage() {
                 >
                   <div className="font-medium">{ev.nome}</div>
                   <div className="text-xs text-gray-500">
-                    {new Date(ev.createdAt).toLocaleString()}
+                    {ev.createdAt ? new Date(ev.createdAt).toLocaleString() : ""}
                   </div>
                 </Link>
               </li>
@@ -83,6 +101,7 @@ export default function GestaoCertificadosPage() {
         )}
       </section>
 
+      {/* Modal minimalista: só nome */}
       <CreateCertEventModal
         open={open}
         onOpenChange={setOpen}
