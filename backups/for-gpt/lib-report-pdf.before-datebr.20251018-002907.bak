@@ -13,20 +13,11 @@ export async function buildGroupReportPDF({
   summaries: ClassSummary[];
 }): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595, 842]); // A4 size
+  const page = pdfDoc.addPage([842, 595]); // A4 landscape
   const { height } = page.getSize();
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   let y = height - 50;
-
-  // helper para DD/MM/YYYY
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const br = (iso?: string) => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-  };
 
   page.drawText(`Relatório de Presenças — Grupo: ${groupName}`, {
     x: 50,
@@ -37,7 +28,7 @@ export async function buildGroupReportPDF({
   });
   y -= 25;
 
-  page.drawText(`Período: ${br(from)} a ${br(to)}`, {
+  page.drawText(`Período: ${from} a ${to}`, {
     x: 50,
     y,
     size: 10,
