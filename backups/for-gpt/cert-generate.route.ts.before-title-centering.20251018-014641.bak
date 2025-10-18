@@ -15,12 +15,15 @@ type EventPayload = {
   cidade_uf?: string;
   carga_horaria?: string;
   responsavel?: string;
+  // textos
   texto_participante?: string;
   texto_ministrante?: string;
   texto_organizador?: string;
   texto_verso?: string;        // conteúdo programático (pode vir com ';' separando itens)
+  // assinaturas configuráveis
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
+  // validação & autorização (verso)
   qr_url?: string;
   autorizacao_texto?: string;
 };
@@ -44,6 +47,7 @@ function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: P
       line = t;
     } else {
       if (line) lines.push(line);
+      // quebra palavra longa
       if (font.widthOfTextAtSize(w, size) > maxWidth) {
         let chunk = "";
         for (const ch of w) {
@@ -62,13 +66,13 @@ function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: P
 }
 function drawCenteredText(page: any, text: string, y: number, size: number, font: PDFFont, color = rgb(0,0,0), characterSpacing?: number) {
   const { width } = page.getSize();
-  const w = font.widthOfTextAtSize(text, size) + (characterSpacing ? characterSpacing * text.length : 0);
-  page.drawText(text, { x: (width - w) / 2, y, size, font, color, characterSpacing });
+  const textWidth = font.widthOfTextAtSize(text, size) + (characterSpacing ? characterSpacing * text.length : 0);
+  page.drawText(text, { x: (width - textWidth) / 2, y, size, font, color, characterSpacing });
 }
 function drawRightAlignedText(page: any, text: string, y: number, size: number, font: PDFFont, rightMargin: number, color = rgb(0,0,0)) {
   const { width } = page.getSize();
-  const w = font.widthOfTextAtSize(text, size);
-  page.drawText(text, { x: Math.max(0, width - rightMargin - w), y, size, font, color });
+  const textWidth = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x: Math.max(0, width - rightMargin - textWidth), y, size, font, color });
 }
 function formatBR(iso?: string | null): string | null {
   if (!iso) return null;
@@ -83,15 +87,17 @@ function formatBR(iso?: string | null): string | null {
 /* ============================== PDF builder ============================== */
 async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
-  // usar Times "correta" do pdf-lib
+  // Tipografia: Times (mais próxima do modelo)
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
   const fontBold = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const fontItalic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
 
+  // Paleta
   const red = rgb(0.80, 0.00, 0.00);
   const green = rgb(0.00, 0.45, 0.30);
   const gray = rgb(0.25, 0.25, 0.25);
 
+  // Assinaturas fallback
   const s1name = (ev.sign1_name || "VÁGNER ESPÍNDOLA RODRIGUES").toUpperCase();
   const s1role = ev.sign1_role || "Prefeito Municipal";
   const s2name = (ev.sign2_name || "GEÓVANA BENEDET ZANETTE").toUpperCase();
@@ -105,23 +111,28 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const { width, height } = page.getSize();
     const margin = 36, left = margin, right = margin;
 
+    // Moldura
     page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
+
+    // Barras decorativas
     page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
     page.drawRectangle({ x: width - 105, y: height - 80, width: 105, height: 32, color: green });
 
-    // título com tracking MAIS largo e tamanho maior
+    // Título com tracking maior
     let yTopTitle = height - 104;
-    drawCenteredText(page, "CERTIFICADO", yTopTitle, 34, fontBold, red, 3.8);
+    drawCenteredText(page, "CERTIFICADO", yTopTitle, 32, fontBold, red, 2.5);
 
-    // nome/CPF centralizado exatamente sob o eixo do título
-    let yName = yTopTitle - 52;
+    // Nome + documento centralizado (negrito)
+    let yName = yTopTitle - 42;
     const nameLine = [st.aluno_nome.toUpperCase(), st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
     drawCenteredText(page, nameLine, yName, 15, fontBold);
 
-    const topLimit = yName - 24;
-    const bottomLimit = 120;
+    // Área disponível para centralização vertical do corpo:
+    const topLimit = yName - 24;      // limite superior (logo abaixo do nome)
+    const bottomLimit = 120;          // limite inferior (acima das assinaturas)
     const usableHeight = topLimit - bottomLimit;
 
+    // Corpo do texto
     const inicioBR = formatBR(ev.data_inicio);
     const fimBR = formatBR(ev.data_fim);
     const periodo = (inicioBR || fimBR) ? `${inicioBR ?? ""}${inicioBR && fimBR ? " a " : ""}${fimBR ?? ""}` : "";
@@ -147,9 +158,11 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const bodySize = 12.5, bodyLH = 17;
     const bodyLines = wrapTextByWidth({ text: paragraph, font, size: bodySize, maxWidth: contentWidth });
 
+    // Centralização vertical: começamos de modo que o bloco inteiro fique no meio da área útil
     const totalBodyHeight = bodyLines.length * bodyLH;
     let y = topLimit - (usableHeight - totalBodyHeight) / 2;
 
+    // Desenho centralizado (horizontal) linha a linha
     for (const line of bodyLines) {
       const w = font.widthOfTextAtSize(line, bodySize);
       const x = (width - w) / 2;
@@ -157,11 +170,13 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       y -= bodyLH;
     }
 
+    // Data/Lugar (direita, cinza)
     const dataFormatada = formatBR(ev.data_fim || ev.data_inicio);
     const cidade = ev.cidade_uf?.trim() || ev.local?.trim();
     const linhaData = (cidade && dataFormatada) ? `${cidade}, ${dataFormatada}.` : (dataFormatada ? `${dataFormatada}.` : "");
     if (linhaData) drawRightAlignedText(page, linhaData, bottomLimit + 14 + bodyLH, 12, font, right, gray);
 
+    // Assinaturas no rodapé
     const lineY = 86;
     const signCols = [
       { name: s1name, role: s1role },
@@ -189,13 +204,17 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const contentX2 = left2 + 24;
     const contentW2 = w2 - (contentX2 + right2 + 24);
 
+    // Moldura
     page2.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.85,0.85,0.85), borderWidth: 0.8 });
 
+    // Área superior (conteúdos)
     let y2 = h2 - 82;
 
+    // Título "Conteúdo Programático:" e itens em lista (split por ';')
     if (ev.texto_verso && ev.texto_verso.trim()) {
       page2.drawText("Conteúdo Programático:", { x: contentX2, y: y2, size: 12.5, font: fontBold });
       y2 -= 18;
+
       const raw = ev.texto_verso.replace(/\s*;\s*$/,"");
       const items = raw.split(";").map(s => s.trim()).filter(Boolean);
       for (const item of items) {
@@ -208,6 +227,7 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       }
     }
 
+    // QR no canto inferior esquerdo
     const qrSize = 120;
     const qrX = left2 + 10;
     const qrY = m2 + 18;
@@ -218,17 +238,23 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       page2.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
     }
 
-    const footerBaseY = m2 + 40;
-    const totalY = footerBaseY + 16;
+    // Rodapé (à direita)
+    const footerBaseY = m2 + 40;  // “Curso autorizado...” nesta linha
+    const totalY = footerBaseY + 16;  // TOTAL uma linha acima
     const rightMargin = right2;
 
+    // TOTAL à direita (negrito)
     const totalCarga = (st.carga_horaria || ev.carga_horaria || "").trim();
     if (totalCarga) {
       drawRightAlignedText(page2, `TOTAL: ${totalCarga}`, totalY, 12.5, fontBold, rightMargin);
     }
+
+    // Curso autorizado... (à direita)
     if (ev.autorizacao_texto && ev.autorizacao_texto.trim()) {
       drawRightAlignedText(page2, ev.autorizacao_texto.trim(), footerBaseY, 12, font, rightMargin);
     }
+
+    // Responsável (linha abaixo, à direita)
     if (ev.responsavel && ev.responsavel.trim()) {
       drawRightAlignedText(page2, `Responsável: ${ev.responsavel.trim()}`, footerBaseY - 18, 12, font, rightMargin);
     }
