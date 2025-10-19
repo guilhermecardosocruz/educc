@@ -48,6 +48,14 @@ function useEventIdFromPath(): string {
 const evKey = (id: string) => `cert:event:${id}`;
 const stKey = (id: string) => `cert:event:students:${id}`;
 
+// ===== Ordenação alfabética (pt-BR) =====
+const collator = new Intl.Collator("pt-BR", { sensitivity: "base", ignorePunctuation: true });
+function sortStudents(arr: Student[]): Student[] {
+  return [...(arr || [])].sort((a, b) =>
+    collator.compare((a?.aluno_nome || "").trim(), (b?.aluno_nome || "").trim())
+  );
+}
+
 export default function CertEventPage() {
   const id = useEventIdFromPath();
 
@@ -71,8 +79,9 @@ export default function CertEventPage() {
     try { localStorage.setItem(evKey(id), JSON.stringify(next)); } catch {}
   }
   function persistStudents(list: Student[]) {
-    setStudents(list);
-    try { localStorage.setItem(stKey(id), JSON.stringify(list)); } catch {}
+    const sorted = sortStudents(list);
+    setStudents(sorted);
+    try { localStorage.setItem(stKey(id), JSON.stringify(sorted)); } catch {}
   }
 
   // ===== Exemplos (evento + alunos) =====
@@ -96,7 +105,6 @@ export default function CertEventPage() {
       sign1_role: "Prefeito Municipal",
       sign2_name: "GEÓVANA BENEDET ZANETTE",
       sign2_role: "Secretária Municipal de Educação",
-      // NOVOS CAMPOS (verso)
       qr_url: "https://seu.dominio.gov.br/validacao/cert/ABC123",
       autorizacao_texto: "Curso autorizado de acordo com o Artigo 23 da Lei nº 4.307, de 02 de maio de 2002.",
       responsavel: "Gislene dos Santos Sala",
@@ -104,11 +112,11 @@ export default function CertEventPage() {
     };
   }
   function exemploAlunos(): Student[] {
-    return [
+    return sortStudents([
       { aluno_nome: "NATALIA BENITES", aluno_doc: "034.***.***-36", turma: "Turma A", carga_horaria: "08h" },
       { aluno_nome: "JOÃO SILVA", aluno_doc: "123.456.789-00", turma: "Turma B", carga_horaria: "08h" },
       { aluno_nome: "MARIA OLIVEIRA", aluno_doc: "987.654.321-00", turma: "Turma A", carga_horaria: "08h" },
-    ];
+    ]);
   }
 
   // ===== Carrega/localStorage + PRÉ-PREENCHIMENTO (se vazio ou ?demo=1) =====
@@ -128,7 +136,7 @@ export default function CertEventPage() {
 
     try {
       const rawSt = localStorage.getItem(stKey(id));
-      if (rawSt) setStudents(JSON.parse(rawSt));
+      if (rawSt) setStudents(sortStudents(JSON.parse(rawSt) || []));
     } catch {}
 
     const forceDemo =
@@ -180,7 +188,7 @@ export default function CertEventPage() {
         return;
       }
       const alunos: Student[] = data.alunos || [];
-      persistStudents(alunos);
+      persistStudents(alunos); // já ordena
     } finally {
       setUploading(false);
       const el = document.getElementById("upload-xlsx") as HTMLInputElement | null;
@@ -235,14 +243,14 @@ export default function CertEventPage() {
       carga_horaria: updated.carga_horaria?.trim() || undefined,
       observacoes: updated.observacoes?.trim() || undefined,
     };
-    persistStudents(next);
+    persistStudents(next); // salva já ordenando
     closeEdit();
   }
 
   function handleDeleteStudent(i: number) {
     if (!confirm("Excluir este aluno?")) return;
     const next = students.filter((_, idx) => idx !== i);
-    persistStudents(next);
+    persistStudents(next); // salva já ordenando
     closeEdit();
   }
 
@@ -408,6 +416,7 @@ export default function CertEventPage() {
             {uploading ? "Enviando..." : "Enviar planilha preenchida"}
           </label>
 
+          {/* Mantido: botão para GERAR TODOS */}
           <button type="button" className="btn-primary" onClick={gerarPDF} disabled={generating || !students.length}>
             {generating ? "Gerando..." : "Gerar certificados (PDF único)"}
           </button>
@@ -451,6 +460,7 @@ export default function CertEventPage() {
           </div>
         )}
 
+        {/* Modal de edição */}
         <EditCertStudentModal
           open={editOpen}
           onOpenChange={(v) => (v ? setEditOpen(true) : closeEdit())}
