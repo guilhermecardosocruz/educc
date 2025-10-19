@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import EditCertStudentModal, { CertStudent as ModalStudent } from "@/components/EditCertStudentModal";
 
 type EventItem = {
   id: string;
@@ -58,6 +59,11 @@ export default function CertEventPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
+
+  // --- estados do modal de edição ---
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number>(-1);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   // ===== Persistência =====
   function persist(next: EventItem) {
@@ -205,6 +211,64 @@ export default function CertEventPage() {
       URL.revokeObjectURL(a.href);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  // ===== Edição (duplo-clique + modal) =====
+  function openEdit(i: number) {
+    setEditingIndex(i);
+    setEditingStudent(students[i] ?? null);
+    setEditOpen(true);
+  }
+  function closeEdit() {
+    setEditOpen(false);
+    setEditingIndex(-1);
+    setEditingStudent(null);
+  }
+
+  function handleSaveStudent(updated: ModalStudent, i: number) {
+    const next = [...students];
+    next[i] = {
+      aluno_nome: updated.aluno_nome.trim(),
+      aluno_doc: updated.aluno_doc?.trim() || undefined,
+      turma: updated.turma?.trim() || undefined,
+      carga_horaria: updated.carga_horaria?.trim() || undefined,
+      observacoes: updated.observacoes?.trim() || undefined,
+    };
+    persistStudents(next);
+    closeEdit();
+  }
+
+  function handleDeleteStudent(i: number) {
+    if (!confirm("Excluir este aluno?")) return;
+    const next = students.filter((_, idx) => idx !== i);
+    persistStudents(next);
+    closeEdit();
+  }
+
+  async function handleGenerateOne(i: number) {
+    const st = students[i];
+    if (!st) return;
+    if (!ev.nome?.trim()) { alert("Preencha o nome do evento antes de gerar."); return; }
+    try {
+      const res = await fetch(`/api/cert-events/${id}/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event: ev, students: [st] }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data?.error || "Falha ao gerar PDF");
+        return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `certificado-${id}-aluno-${i + 1}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      closeEdit();
     }
   }
 
@@ -369,7 +433,12 @@ export default function CertEventPage() {
               </thead>
               <tbody>
                 {students.map((s, i) => (
-                  <tr key={i} className="border-t">
+                  <tr
+                    key={i}
+                    className="border-t hover:bg-gray-50 cursor-pointer"
+                    onDoubleClick={() => openEdit(i)}
+                    title="Clique duas vezes para editar"
+                  >
                     <td className="p-2">{s.aluno_nome}</td>
                     <td className="p-2">{s.aluno_doc || "-"}</td>
                     <td className="p-2">{s.turma || "-"}</td>
@@ -381,6 +450,16 @@ export default function CertEventPage() {
             </table>
           </div>
         )}
+
+        <EditCertStudentModal
+          open={editOpen}
+          onOpenChange={(v) => (v ? setEditOpen(true) : closeEdit())}
+          student={editingStudent as ModalStudent | null}
+          index={editingIndex}
+          onSave={handleSaveStudent}
+          onDelete={handleDeleteStudent}
+          onGenerateOne={handleGenerateOne}
+        />
       </section>
     </main>
   );
