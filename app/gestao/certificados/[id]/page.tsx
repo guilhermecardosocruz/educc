@@ -7,28 +7,22 @@ import EditCertStudentModal, { CertStudent as ModalStudent } from "@/components/
 
 type EventItem = {
   id: string;
-  // Identidade do curso
   nome: string;
   local?: string;
-  cidade_uf?: string;            // ex.: "Criciúma (SC)"
-  data_inicio?: string;          // YYYY-MM-DD
-  data_fim?: string;             // YYYY-MM-DD
-  carga_horaria?: string;        // ex.: "08h"
-  // Textos do certificado (frente/verso) com códigos
-  texto_participante?: string;   // usa [nome do participante], [cpf], [carga horária]
+  cidade_uf?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  carga_horaria?: string;
+  texto_participante?: string;
   texto_ministrante?: string;
   texto_organizador?: string;
   texto_verso?: string;
-  // Logos/brasões
   logos?: { prefeitura?: boolean; escola?: boolean; brasao?: boolean };
-  // Assinaturas (institucionais; participante é automático)
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
-  // Validação & verso
-  qr_url?: string;               // link que vira QR Code
-  autorizacao_texto?: string;    // "Curso autorizado de acordo com ..."
-  // Extra
-  responsavel?: string;          // usado também no verso
+  qr_url?: string;
+  autorizacao_texto?: string;
+  responsavel?: string;
   observacoes?: string;
 };
 
@@ -48,12 +42,10 @@ function useEventIdFromPath(): string {
 const evKey = (id: string) => `cert:event:${id}`;
 const stKey = (id: string) => `cert:event:students:${id}`;
 
-// ===== Ordenação alfabética (pt-BR) =====
+// Ordenação alfabética (pt-BR)
 const collator = new Intl.Collator("pt-BR", { sensitivity: "base", ignorePunctuation: true });
 function sortStudents(arr: Student[]): Student[] {
-  return [...(arr || [])].sort((a, b) =>
-    collator.compare((a?.aluno_nome || "").trim(), (b?.aluno_nome || "").trim())
-  );
+  return [...(arr || [])].sort((a, b) => collator.compare((a?.aluno_nome || "").trim(), (b?.aluno_nome || "").trim()));
 }
 
 export default function CertEventPage() {
@@ -68,12 +60,15 @@ export default function CertEventPage() {
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // --- estados do modal de edição ---
+  // picker de formato (PDF único ou ZIP)
+  const [formatPickerOpen, setFormatPickerOpen] = useState(false);
+
+  // estados do modal de edição
   const [editOpen, setEditOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number>(-1);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
-  // ===== Persistência =====
+  // Persistência
   function persist(next: EventItem) {
     setEv(next);
     try { localStorage.setItem(evKey(id), JSON.stringify(next)); } catch {}
@@ -84,7 +79,7 @@ export default function CertEventPage() {
     try { localStorage.setItem(stKey(id), JSON.stringify(sorted)); } catch {}
   }
 
-  // ===== Exemplos (evento + alunos) =====
+  // Exemplos
   function exemploEvento(): EventItem {
     return {
       id,
@@ -119,10 +114,9 @@ export default function CertEventPage() {
     ]);
   }
 
-  // ===== Carrega/localStorage + PRÉ-PREENCHIMENTO (se vazio ou ?demo=1) =====
+  // Carregamento inicial
   useEffect(() => {
     if (!id) return;
-
     let hadData = false;
 
     try {
@@ -151,7 +145,7 @@ export default function CertEventPage() {
     }
   }, [id]);
 
-  // ===== Ações =====
+  // Ações
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!ev.nome?.trim()) {
@@ -188,7 +182,7 @@ export default function CertEventPage() {
         return;
       }
       const alunos: Student[] = data.alunos || [];
-      persistStudents(alunos); // já ordena
+      persistStudents(alunos);
     } finally {
       setUploading(false);
       const el = document.getElementById("upload-xlsx") as HTMLInputElement | null;
@@ -196,9 +190,9 @@ export default function CertEventPage() {
     }
   }
 
-  async function gerarPDF() {
+  async function gerarPDFTodos() {
     if (!ev.nome?.trim()) { alert("Preencha o nome do evento antes de gerar."); return; }
-    if (!students.length) { alert("Nenhum aluno carregado. Envie a planilha ou use os exemplos pré-carregados."); return; }
+    if (!students.length) { alert("Nenhum aluno carregado."); return; }
     setGenerating(true);
     try {
       const res = await fetch(`/api/cert-events/${id}/generate`, {
@@ -219,10 +213,38 @@ export default function CertEventPage() {
       URL.revokeObjectURL(a.href);
     } finally {
       setGenerating(false);
+      setFormatPickerOpen(false);
     }
   }
 
-  // ===== Edição (duplo-clique + modal) =====
+  async function gerarZIPTodos() {
+    if (!ev.nome?.trim()) { alert("Preencha o nome do evento antes de gerar."); return; }
+    if (!students.length) { alert("Nenhum aluno carregado."); return; }
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/cert-events/${id}/generate/zip`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event: ev, students }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data?.error || "Falha ao gerar ZIP");
+        return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `certificados-${id}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setGenerating(false);
+      setFormatPickerOpen(false);
+    }
+  }
+
+  // Edição individual
   function openEdit(i: number) {
     setEditingIndex(i);
     setEditingStudent(students[i] ?? null);
@@ -233,7 +255,6 @@ export default function CertEventPage() {
     setEditingIndex(-1);
     setEditingStudent(null);
   }
-
   function handleSaveStudent(updated: ModalStudent, i: number) {
     const next = [...students];
     next[i] = {
@@ -243,17 +264,15 @@ export default function CertEventPage() {
       carga_horaria: updated.carga_horaria?.trim() || undefined,
       observacoes: updated.observacoes?.trim() || undefined,
     };
-    persistStudents(next); // salva já ordenando
+    persistStudents(next);
     closeEdit();
   }
-
   function handleDeleteStudent(i: number) {
     if (!confirm("Excluir este aluno?")) return;
     const next = students.filter((_, idx) => idx !== i);
-    persistStudents(next); // salva já ordenando
+    persistStudents(next);
     closeEdit();
   }
-
   async function handleGenerateOne(i: number) {
     const st = students[i];
     if (!st) return;
@@ -405,7 +424,7 @@ export default function CertEventPage() {
       <section className="card p-6">
         <h3 className="font-semibold mb-4">Alunos & Certificados</h3>
 
-        <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex flex-wrap gap-3 mb-4">
           <button type="button" className="btn-primary" onClick={downloadTemplate}>
             Baixar modelo de planilha (.xlsx)
           </button>
@@ -416,10 +435,39 @@ export default function CertEventPage() {
             {uploading ? "Enviando..." : "Enviar planilha preenchida"}
           </label>
 
-          {/* Mantido: botão para GERAR TODOS */}
-          <button type="button" className="btn-primary" onClick={gerarPDF} disabled={generating || !students.length}>
-            {generating ? "Gerando..." : "Gerar certificados (PDF único)"}
+          {/* Botão único que abre o picker de formato */}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setFormatPickerOpen((v) => !v)}
+            disabled={!students.length || generating}
+            title="Gerar certificados (escolha PDF único ou ZIP)"
+          >
+            {generating ? "Gerando..." : "Gerar certificados"}
           </button>
+
+          {/* Popover simples com as duas opções */}
+          {formatPickerOpen && (
+            <div className="absolute z-10 mt-12 w-64 rounded-md border bg-white shadow-lg p-2">
+              <div className="text-sm font-medium px-2 py-1">Escolha o formato</div>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded hover:bg-gray-50"
+                onClick={gerarPDFTodos}
+                disabled={generating}
+              >
+                PDF único (todas as páginas)
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 rounded hover:bg-gray-50"
+                onClick={gerarZIPTodos}
+                disabled={generating}
+              >
+                ZIP (1 PDF por aluno)
+              </button>
+            </div>
+          )}
         </div>
 
         <p className="text-sm text-gray-600 mb-2">
