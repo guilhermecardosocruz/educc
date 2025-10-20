@@ -160,3 +160,17 @@ select.select-wide {
 /* ===== Ajuste final: mais espaço nos seletores ===== */
 .cert-assets .select-mid  { min-width: 16rem; }  /* antes 14rem */
 .cert-assets .select-wide { min-width: 22rem; }  /* antes 18rem */
+
+/* ===== Certificados: altura compacta nos campos do bloco de artes ===== */
+.cert-assets select,
+.cert-assets input[type="number"],
+.cert-assets .input {
+  height: 2.25rem;           /* ~36px – mais baixo */
+  padding-top: 2px;          /* menos “gordura” vertical */
+  padding-bottom: 2px;
+  line-height: 1.2;          /* evita cortar texto */
+}
+
+/* mantém larguras definidas antes (texto não corta) */
+.cert-assets .select-mid  { min-width: 16rem; }
+.cert-assets .select-wide { min-width: 22rem; }
