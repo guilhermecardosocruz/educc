@@ -100,7 +100,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="cert-assets space-y-6">
       {/* Fundo */}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
@@ -109,7 +109,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-600">Modo do fundo</span>
               <select
-                className="input h-9 select-mid select-compact"
+                className="input h-9 select-compact select-mid"
                 value={v.bg?.mode || "cover"}
                 onChange={(e) => setBgMode(e.target.value as CertBackground["mode"])}
                 aria-label="Modo do fundo"
@@ -178,8 +178,8 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
           <ul className="space-y-3">
             {logos.map((lg, idx) => (
               <li key={idx} className="p-3 border rounded-md">
-                {/* Duas linhas estáveis para evitar sobreposição */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 overflow-visible">
+                {/* Duas linhas para estabilidade e sem sobreposição */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                   {/* Linha 1 */}
                   <div className="md:col-span-2 flex items-center justify-center">
                     <img
@@ -192,11 +192,9 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-4">
                     <label className="block text-xs font-medium mb-1">Tipo de logo</label>
                     <select
-                      className="input h-9 w-full select-mid select-compact"
+                      className="input h-9 w-full select-compact select-mid"
                       value={lg.label || "outro"}
-                      onChange={(e) =>
-                        updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })
-                      }
+                      onChange={(e) => updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })}
                     >
                       <option value="prefeitura">Prefeitura</option>
                       <option value="escola">Escola</option>
@@ -208,21 +206,21 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-6">
                     <label className="block text-xs font-medium mb-1">Posição</label>
                     <select
-                      className="input h-9 w-full select-wide select-compact"
+                      className="input h-9 w-full select-compact select-wide"
                       value={lg.position}
                       onChange={(e) =>
                         updateLogo(idx, { position: e.target.value as CertLogoItem["position"] })
                       }
                       title="Posição da logo no certificado"
                     >
-                      {(
-                        [
-                          "top-left","top-center","top-right",
-                          "center-left","center","center-right",
-                          "bottom-left","bottom-center","bottom-right",
-                        ] as CertLogoItem["position"][]
-                      ).map((pos) => (
-                        <option key={pos} value={pos}>{posLabel[pos]}</option>
+                      {([
+                        "top-left","top-center","top-right",
+                        "center-left","center","center-right",
+                        "bottom-left","bottom-center","bottom-right",
+                      ] as CertLogoItem["position"][]).map((pos) => (
+                        <option key={pos} value={pos}>
+                          {posLabel[pos]}
+                        </option>
                       ))}
                     </select>
                   </div>

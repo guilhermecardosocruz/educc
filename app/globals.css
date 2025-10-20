@@ -109,3 +109,22 @@ select.select-wide {
   text-overflow: unset;
   white-space: nowrap;
 }
+
+/* ===== Certificados: selects fluidos ===== */
+.cert-assets select.select-mid,
+.cert-assets select.select-long,
+.cert-assets select.select-wide {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;          /* evita estourar a coluna */
+  overflow: visible;
+  text-overflow: unset;
+  white-space: nowrap;
+}
+
+/* Compacta padding horizontal apenas aqui */
+.cert-assets .input.select-compact,
+.cert-assets select.select-compact {
+  padding-left: 0.5rem;
+  padding-right: 1.75rem; /* espaço do caret */
+}
