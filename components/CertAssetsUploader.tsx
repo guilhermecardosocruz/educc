@@ -4,17 +4,17 @@ import { useRef } from "react";
 
 export type CertLogoItem = {
   label?: "prefeitura" | "escola" | "brasao" | "outro";
-  dataUrl: string; // data:image/png|jpeg;base64,...
+  dataUrl: string;
   position:
     | "top-left" | "top-center" | "top-right"
     | "center-left" | "center" | "center-right"
     | "bottom-left" | "bottom-center" | "bottom-right";
-  widthPx: number; // largura desejada (px aprox. aos pontos PDF)
-  margin?: number; // margem a partir da borda (default 16)
+  widthPx: number;
+  margin?: number;
 };
 
 export type CertBackground = {
-  dataUrl: string; // png/jpg em dataURL
+  dataUrl: string;
   mode: "cover" | "contain" | "stretch";
 };
 
@@ -109,7 +109,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-600">Modo do fundo</span>
               <select
-                className="input h-9 select-mid"
+                className="input h-9 select-mid select-compact"
                 value={v.bg?.mode || "cover"}
                 onChange={(e) => setBgMode(e.target.value as CertBackground["mode"])}
                 aria-label="Modo do fundo"
@@ -192,7 +192,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-4">
                     <label className="block text-xs font-medium mb-1">Tipo de logo</label>
                     <select
-                      className="input h-9 w-full select-mid"
+                      className="input h-9 w-full select-mid select-compact"
                       value={lg.label || "outro"}
                       onChange={(e) =>
                         updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })
@@ -208,7 +208,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-6">
                     <label className="block text-xs font-medium mb-1">Posição</label>
                     <select
-                      className="input h-9 w-full select-long"
+                      className="input h-9 w-full select-wide select-compact"
                       value={lg.position}
                       onChange={(e) =>
                         updateLogo(idx, { position: e.target.value as CertLogoItem["position"] })

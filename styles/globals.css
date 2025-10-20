@@ -55,3 +55,28 @@ select.select-mid, select.select-long {
   text-overflow: unset;
   white-space: nowrap;
 }
+
+/* ===== Selects largos e compactos (texto longo sem cortar) ===== */
+.select-mid   { min-width: 20rem; }   /* ~320px */
+.select-long  { min-width: 26rem; }   /* ~416px */
+.select-wide  { min-width: 32rem; }   /* ~512px */
+
+@media (max-width: 768px) {
+  .select-mid, .select-long, .select-wide { min-width: 100%; }
+}
+
+/* Versão compacta: menos padding horizontal para sobrar espaço ao texto */
+.input.select-compact,
+select.select-compact {
+  padding-left: 0.5rem;   /* ↓ padrão */
+  padding-right: 1.75rem; /* mantém espaço do "caret" */
+}
+
+/* Evita clipping visual de opções longas */
+select.select-mid,
+select.select-long,
+select.select-wide {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: nowrap;
+}
