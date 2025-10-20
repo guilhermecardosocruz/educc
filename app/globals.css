@@ -128,3 +128,12 @@ select.select-wide {
   padding-left: 0.5rem;
   padding-right: 1.75rem; /* espaço do caret */
 }
+
+/* ===== Certificados: selects super compactos ===== */
+.cert-assets .input.select-compact,
+.cert-assets select.select-compact {
+  padding-left: 0;          /* margem interna zero à esquerda */
+  padding-right: 1.25rem;   /* mínimo p/ caret não sobrepor o texto */
+  height: 2rem;             /* ~h-8 */
+  line-height: 2rem;        /* evita "estourar" na vertical */
+}

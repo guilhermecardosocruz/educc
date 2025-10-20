@@ -109,7 +109,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-600">Modo do fundo</span>
               <select
-                className="input h-9 select-compact select-mid"
+                className="input h-8 select-compact select-mid"
                 value={v.bg?.mode || "cover"}
                 onChange={(e) => setBgMode(e.target.value as CertBackground["mode"])}
                 aria-label="Modo do fundo"
@@ -192,7 +192,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-4">
                     <label className="block text-xs font-medium mb-1">Tipo de logo</label>
                     <select
-                      className="input h-9 w-full select-compact select-mid"
+                      className="input h-8 w-full select-compact select-mid"
                       value={lg.label || "outro"}
                       onChange={(e) => updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })}
                     >
@@ -206,7 +206,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-6">
                     <label className="block text-xs font-medium mb-1">Posição</label>
                     <select
-                      className="input h-9 w-full select-compact select-wide"
+                      className="input h-8 w-full select-compact select-wide"
                       value={lg.position}
                       onChange={(e) =>
                         updateLogo(idx, { position: e.target.value as CertLogoItem["position"] })
@@ -229,7 +229,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-start-3 md:col-span-3">
                     <label className="block text-xs font-medium mb-1">Largura (px)</label>
                     <input
-                      className="input h-9 w-full"
+                      className="input h-8 w-full"
                       type="number"
                       min={40}
                       max={600}
@@ -247,7 +247,7 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                   <div className="md:col-span-3">
                     <label className="block text-xs font-medium mb-1">Margem (px)</label>
                     <input
-                      className="input h-9 w-full"
+                      className="input h-8 w-full"
                       type="number"
                       min={0}
                       max={100}
