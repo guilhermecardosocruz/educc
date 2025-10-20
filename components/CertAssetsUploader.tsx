@@ -87,33 +87,42 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
     onChange({ ...v, logos: next });
   }
 
+  // labels PT-BR para posições (valor técnico -> rótulo amigável)
+  const posLabel: Record<CertLogoItem["position"], string> = {
+    "top-left": "Topo — Esquerda",
+    "top-center": "Topo — Centro",
+    "top-right": "Topo — Direita",
+    "center-left": "Centro — Esquerda",
+    "center": "Centro — Centralizado",
+    "center-right": "Centro — Direita",
+    "bottom-left": "Base — Esquerda",
+    "bottom-center": "Base — Centro",
+    "bottom-right": "Base — Direita",
+  };
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Fundo */}
       <div>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <label className="text-sm font-medium">Fundo do certificado</label>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-600" htmlFor="bg-mode">
-                Modo do fundo
-              </label>
+              <span className="text-xs text-gray-600">Modo do fundo</span>
               <select
-                id="bg-mode"
-                className="input h-9 min-w-[190px]"
+                className="input h-9 min-w-[220px]"
                 value={v.bg?.mode || "cover"}
                 onChange={(e) => setBgMode(e.target.value as CertBackground["mode"])}
-                aria-label="Modo de ajuste do fundo"
-                title="Como a imagem de fundo se ajusta à página"
+                aria-label="Modo do fundo"
+                title="Modo do fundo"
               >
-                {/* values mantêm inglês para o backend; labels em PT-BR */}
                 <option value="cover">Preencher (cover)</option>
                 <option value="contain">Conter (contain)</option>
                 <option value="stretch">Esticar (stretch)</option>
               </select>
             </div>
             {v.bg?.dataUrl ? (
-              <button type="button" className="btn-secondary" onClick={removeBg} title="Remover a imagem de fundo">
+              <button type="button" className="btn-secondary" onClick={removeBg} title="Remover fundo">
                 Remover fundo
               </button>
             ) : null}
@@ -170,29 +179,23 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
           <ul className="space-y-3">
             {logos.map((lg, idx) => (
               <li key={idx} className="p-3 border rounded-md">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-start gap-3">
                   <img
                     src={lg.dataUrl}
                     alt={`Logo ${idx + 1}`}
                     className="h-14 w-auto rounded border bg-white object-contain"
                   />
 
-                  {/* Controles */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium" htmlFor={`logo-tipo-${idx}`}>
-                        Tipo de logo
-                      </label>
+                  {/* Controles: rótulos acima + min-width para não cortar texto */}
+                  <div className="grid grid-cols-1 md:grid-cols-8 gap-3 flex-1 min-w-[260px]">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-medium mb-1">Tipo de logo</label>
                       <select
-                        id={`logo-tipo-${idx}`}
-                        className="input h-9 min-w-[160px]"
+                        className="input h-9 min-w-[180px]"
                         value={lg.label || "outro"}
                         onChange={(e) =>
-                          updateLogo(idx, {
-                            label: e.target.value as CertLogoItem["label"],
-                          })
+                          updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })
                         }
-                        title="Categoria do logo (apenas para referência)"
                       >
                         <option value="prefeitura">Prefeitura</option>
                         <option value="escola">Escola</option>
@@ -201,41 +204,32 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                       </select>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium" htmlFor={`logo-pos-${idx}`}>
-                        Posição
-                      </label>
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-medium mb-1">Posição</label>
                       <select
-                        id={`logo-pos-${idx}`}
-                        className="input h-9 min-w-[190px]"
+                        className="input h-9 min-w-[240px]"
                         value={lg.position}
                         onChange={(e) =>
-                          updateLogo(idx, {
-                            position: e.target.value as CertLogoItem["position"],
-                          })
+                          updateLogo(idx, { position: e.target.value as CertLogoItem["position"] })
                         }
-                        title="Posição do logo na página"
+                        title="Posição da logo no certificado"
                       >
-                        {/* valores (en-US) mantidos; rótulos em PT-BR */}
-                        <option value="top-left">Topo — Esquerda</option>
-                        <option value="top-center">Topo — Centro</option>
-                        <option value="top-right">Topo — Direita</option>
-                        <option value="center-left">Centro — Esquerda</option>
-                        <option value="center">Centro</option>
-                        <option value="center-right">Centro — Direita</option>
-                        <option value="bottom-left">Inferior — Esquerda</option>
-                        <option value="bottom-center">Inferior — Centro</option>
-                        <option value="bottom-right">Inferior — Direita</option>
+                        {(
+                          [
+                            "top-left","top-center","top-right",
+                            "center-left","center","center-right",
+                            "bottom-left","bottom-center","bottom-right",
+                          ] as CertLogoItem["position"][]
+                        ).map((pos) => (
+                          <option key={pos} value={pos}>{posLabel[pos]}</option>
+                        ))}
                       </select>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium" htmlFor={`logo-width-${idx}`}>
-                        Largura (px)
-                      </label>
+                    <div className="md:col-span-1">
+                      <label className="block text-xs font-medium mb-1">Largura (px)</label>
                       <input
-                        id={`logo-width-${idx}`}
-                        className="input h-9 w-32"
+                        className="input h-9 min-w-[110px]"
                         type="number"
                         min={40}
                         max={600}
@@ -243,24 +237,17 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                         value={lg.widthPx || 120}
                         onChange={(e) =>
                           updateLogo(idx, {
-                            widthPx: Math.max(
-                              40,
-                              Math.min(600, Number(e.target.value) || 120)
-                            ),
+                            widthPx: Math.max(40, Math.min(600, Number(e.target.value) || 120)),
                           })
                         }
                         placeholder="largura px"
-                        title="Largura aproximada do logo em pixels"
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium" htmlFor={`logo-margin-${idx}`}>
-                        Margem (px)
-                      </label>
+                    <div className="md:col-span-1">
+                      <label className="block text-xs font-medium mb-1">Margem (px)</label>
                       <input
-                        id={`logo-margin-${idx}`}
-                        className="input h-9 w-28"
+                        className="input h-9 min-w-[110px]"
                         type="number"
                         min={0}
                         max={100}
@@ -268,24 +255,20 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
                         value={lg.margin ?? 16}
                         onChange={(e) =>
                           updateLogo(idx, {
-                            margin: Math.max(
-                              0,
-                              Math.min(100, Number(e.target.value) || 16)
-                            ),
+                            margin: Math.max(0, Math.min(100, Number(e.target.value) || 16)),
                           })
                         }
                         placeholder="margem"
-                        title="Distância do logo até a borda mais próxima"
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 ml-auto">
                     <button
                       type="button"
                       className="btn-secondary"
                       onClick={() => removeLogo(idx)}
-                      title="Remover este logo"
+                      title="Remover logo"
                     >
                       Remover
                     </button>

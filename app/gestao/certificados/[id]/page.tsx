@@ -18,7 +18,7 @@ type EventItem = {
   texto_ministrante?: string;
   texto_organizador?: string;
   texto_verso?: string;
-  logos?: { prefeitura?: boolean; escola?: boolean; brasao?: boolean };
+  logos?: { prefeitura?: boolean; escola?: boolean; brasao?: boolean }; // legado (ignorado na UI)
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
   qr_url?: string;
@@ -56,7 +56,7 @@ export default function CertEventPage() {
 
   const [ev, setEv] = useState<EventItem>(() => ({
     id, nome: "",
-    logos: { prefeitura: true, escola: true, brasao: true },
+    logos: { prefeitura: true, escola: true, brasao: true }, // mantido por compat, mas não mostrado
   }));
   const [students, setStudents] = useState<Student[]>([]);
   const [saving, setSaving] = useState(false);
@@ -385,24 +385,7 @@ export default function CertEventPage() {
             />
           </div>
 
-          {/* Logos/brasões (legacy - mantido) */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Logos/Brasões</label>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={!!ev.logos?.prefeitura} onChange={e => persist({ ...ev, logos: { ...(ev.logos||{}), prefeitura: e.target.checked } })} />
-                Prefeitura
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={!!ev.logos?.escola} onChange={e => persist({ ...ev, logos: { ...(ev.logos||{}), escola: e.target.checked } })} />
-                Escola
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={!!ev.logos?.brasao} onChange={e => persist({ ...ev, logos: { ...(ev.logos||{}), brasao: e.target.checked } })} />
-                Brasão do Município
-              </label>
-            </div>
-          </div>
+          {/* (removido) Logos/brasões legado com checkboxes */}
 
           {/* Assinaturas */}
           <div>
