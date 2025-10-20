@@ -39,3 +39,19 @@
   border-radius: 0.75rem;  /* rounded-xl */
 }
 .actions-stack a { text-decoration: none; }
+
+/* ===== Utilitários para selects longos (evita texto cortado) ===== */
+.select-mid { min-width: 18rem; }   /* ~288px */
+.select-long { min-width: 24rem; }  /* ~384px */
+
+/* Em telas menores, deixa ocupar toda a linha */
+@media (max-width: 640px) {
+  .select-mid, .select-long { min-width: 100%; }
+}
+
+/* Evita clipping visual em alguns navegadores */
+select.select-mid, select.select-long {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: nowrap;
+}
