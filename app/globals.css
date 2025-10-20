@@ -156,3 +156,7 @@ select.select-wide {
 .cert-assets select.select-compact {
   overflow: visible;
 }
+
+/* ===== Ajuste final: mais espaço nos seletores ===== */
+.cert-assets .select-mid  { min-width: 16rem; }  /* antes 14rem */
+.cert-assets .select-wide { min-width: 22rem; }  /* antes 18rem */
