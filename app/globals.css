@@ -137,3 +137,22 @@ select.select-wide {
   height: 2rem;             /* ~h-8 */
   line-height: 2rem;        /* evita "estourar" na vertical */
 }
+
+/* ===== Certificados: selects ajustados (não cortar texto) ===== */
+.cert-assets select.select-compact,
+.cert-assets .input.select-compact {
+  padding-left: 0.5rem;     /* pequeno espaço p/ o texto */
+  padding-right: 2rem;      /* espaço p/ o caret */
+  height: 2.5rem;           /* ~ h-10 */
+  line-height: normal;      /* EVITA recorte vertical das letras */
+  font-size: 0.95rem;       /* melhora legibilidade */
+}
+
+/* Larguras mínimas para caber o rótulo selecionado sem truncar */
+.cert-assets .select-mid  { min-width: 14rem; }
+.cert-assets .select-wide { min-width: 18rem; }
+
+/* Evita clipping em alguns navegadores */
+.cert-assets select.select-compact {
+  overflow: visible;
+}
