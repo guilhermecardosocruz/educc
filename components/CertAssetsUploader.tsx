@@ -87,7 +87,6 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
     onChange({ ...v, logos: next });
   }
 
-  // labels PT-BR para posições (valor técnico -> rótulo amigável)
   const posLabel: Record<CertLogoItem["position"], string> = {
     "top-left": "Topo — Esquerda",
     "top-center": "Topo — Centro",
@@ -179,94 +178,96 @@ export default function CertAssetsUploader({ value, onChange }: Props) {
           <ul className="space-y-3">
             {logos.map((lg, idx) => (
               <li key={idx} className="p-3 border rounded-md">
-                <div className="flex flex-wrap items-start gap-3">
-                  <img
-                    src={lg.dataUrl}
-                    alt={`Logo ${idx + 1}`}
-                    className="h-14 w-auto rounded border bg-white object-contain"
-                  />
-
-                  {/* Controles: rótulos acima + min-width para não cortar texto */}
-                  <div className="grid grid-cols-1 md:grid-cols-8 gap-3 flex-1 min-w-[260px]">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium mb-1">Tipo de logo</label>
-                      <select
-                        className="input h-9 min-w-[180px]"
-                        value={lg.label || "outro"}
-                        onChange={(e) =>
-                          updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })
-                        }
-                      >
-                        <option value="prefeitura">Prefeitura</option>
-                        <option value="escola">Escola</option>
-                        <option value="brasao">Brasão</option>
-                        <option value="outro">Outro</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-medium mb-1">Posição</label>
-                      <select
-                        className="input h-9 min-w-[240px]"
-                        value={lg.position}
-                        onChange={(e) =>
-                          updateLogo(idx, { position: e.target.value as CertLogoItem["position"] })
-                        }
-                        title="Posição da logo no certificado"
-                      >
-                        {(
-                          [
-                            "top-left","top-center","top-right",
-                            "center-left","center","center-right",
-                            "bottom-left","bottom-center","bottom-right",
-                          ] as CertLogoItem["position"][]
-                        ).map((pos) => (
-                          <option key={pos} value={pos}>{posLabel[pos]}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-1">
-                      <label className="block text-xs font-medium mb-1">Largura (px)</label>
-                      <input
-                        className="input h-9 min-w-[110px]"
-                        type="number"
-                        min={40}
-                        max={600}
-                        step={10}
-                        value={lg.widthPx || 120}
-                        onChange={(e) =>
-                          updateLogo(idx, {
-                            widthPx: Math.max(40, Math.min(600, Number(e.target.value) || 120)),
-                          })
-                        }
-                        placeholder="largura px"
-                      />
-                    </div>
-
-                    <div className="md:col-span-1">
-                      <label className="block text-xs font-medium mb-1">Margem (px)</label>
-                      <input
-                        className="input h-9 min-w-[110px]"
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={2}
-                        value={lg.margin ?? 16}
-                        onChange={(e) =>
-                          updateLogo(idx, {
-                            margin: Math.max(0, Math.min(100, Number(e.target.value) || 16)),
-                          })
-                        }
-                        placeholder="margem"
-                      />
-                    </div>
+                {/* DUAS LINHAS: 1) Tipo + Posição  2) Largura + Margem + Remover */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  {/* Linha 1 */}
+                  <div className="md:col-span-2 flex items-center justify-center">
+                    <img
+                      src={lg.dataUrl}
+                      alt={`Logo ${idx + 1}`}
+                      className="h-14 w-auto rounded border bg-white object-contain"
+                    />
                   </div>
 
-                  <div className="flex items-center gap-2 ml-auto">
+                  <div className="md:col-span-5">
+                    <label className="block text-xs font-medium mb-1">Tipo de logo</label>
+                    <select
+                      className="input h-9 w-full"
+                      value={lg.label || "outro"}
+                      onChange={(e) =>
+                        updateLogo(idx, { label: e.target.value as CertLogoItem["label"] })
+                      }
+                    >
+                      <option value="prefeitura">Prefeitura</option>
+                      <option value="escola">Escola</option>
+                      <option value="brasao">Brasão</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-5">
+                    <label className="block text-xs font-medium mb-1">Posição</label>
+                    <select
+                      className="input h-9 w-full"
+                      value={lg.position}
+                      onChange={(e) =>
+                        updateLogo(idx, { position: e.target.value as CertLogoItem["position"] })
+                      }
+                      title="Posição da logo no certificado"
+                    >
+                      {(
+                        [
+                          "top-left","top-center","top-right",
+                          "center-left","center","center-right",
+                          "bottom-left","bottom-center","bottom-right",
+                        ] as CertLogoItem["position"][]
+                      ).map((pos) => (
+                        <option key={pos} value={pos}>{posLabel[pos]}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Linha 2 */}
+                  <div className="md:col-start-3 md:col-span-3">
+                    <label className="block text-xs font-medium mb-1">Largura (px)</label>
+                    <input
+                      className="input h-9 w-full"
+                      type="number"
+                      min={40}
+                      max={600}
+                      step={10}
+                      value={lg.widthPx || 120}
+                      onChange={(e) =>
+                        updateLogo(idx, {
+                          widthPx: Math.max(40, Math.min(600, Number(e.target.value) || 120)),
+                        })
+                      }
+                      placeholder="largura px"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3">
+                    <label className="block text-xs font-medium mb-1">Margem (px)</label>
+                    <input
+                      className="input h-9 w-full"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={2}
+                      value={lg.margin ?? 16}
+                      onChange={(e) =>
+                        updateLogo(idx, {
+                          margin: Math.max(0, Math.min(100, Number(e.target.value) || 16)),
+                        })
+                      }
+                      placeholder="margem"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 flex items-end md:justify-end">
                     <button
                       type="button"
-                      className="btn-secondary"
+                      className="btn-secondary w-full md:w-auto"
                       onClick={() => removeLogo(idx)}
                       title="Remover logo"
                     >
