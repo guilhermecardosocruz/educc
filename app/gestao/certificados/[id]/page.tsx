@@ -18,7 +18,6 @@ type EventItem = {
   texto_ministrante?: string;
   texto_organizador?: string;
   texto_verso?: string;
-  logos?: { prefeitura?: boolean; escola?: boolean; brasao?: boolean }; // legado (ignorado na UI)
   sign1_name?: string; sign1_role?: string;
   sign2_name?: string; sign2_role?: string;
   qr_url?: string;
@@ -56,7 +55,6 @@ export default function CertEventPage() {
 
   const [ev, setEv] = useState<EventItem>(() => ({
     id, nome: "",
-    logos: { prefeitura: true, escola: true, brasao: true }, // mantido por compat, mas não mostrado
   }));
   const [students, setStudents] = useState<Student[]>([]);
   const [saving, setSaving] = useState(false);
@@ -98,7 +96,6 @@ export default function CertEventPage() {
       texto_organizador: "Organizador: Escola Municipal de Governo de Criciúma.",
       texto_verso:
         "Conteúdos: Introdução ao ETP; Levantamento de Demandas; Critérios de Contratação; Estudos de Caso. Metodologia: Aula expositiva, atividades práticas e discussão orientada.",
-      logos: { prefeitura: true, escola: true, brasao: true },
       sign1_name: "VÁGNER ESPÍNDOLA RODRIGUES",
       sign1_role: "Prefeito Municipal",
       sign2_name: "GEÓVANA BENEDET ZANETTE",
@@ -384,8 +381,6 @@ export default function CertEventPage() {
               onChange={(assets) => persist({ ...ev, assets })}
             />
           </div>
-
-          {/* (removido) Logos/brasões legado com checkboxes */}
 
           {/* Assinaturas */}
           <div>
