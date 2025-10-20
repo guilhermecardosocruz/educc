@@ -24,7 +24,7 @@ type EventPayload = {
   sign2_name?: string; sign2_role?: string;
   qr_url?: string;
   autorizacao_texto?: string;
-  /** NOVO: artes opcionais */
+  /** Artes opcionais (fundo/logos) */
   assets?: {
     bg?: { dataUrl: string; mode: "cover" | "contain" | "stretch" };
     logos?: {
@@ -48,7 +48,7 @@ type Student = {
   observacoes?: string;
 };
 
-/* helpers compartilhados */
+/* ===== helpers compartilhados ===== */
 function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
   const words = (text || "").trim().split(/\s+/);
   const lines: string[] = [];
@@ -102,7 +102,7 @@ function sanitizeFilename(name: string) {
     .slice(0, 80) || "aluno";
 }
 
-/* NOVOS helpers de imagem */
+/* ===== helpers de artes (bg + logos agrupadas) ===== */
 async function embedImageFromDataUrl(pdf: PDFDocument, dataUrl: string) {
   const m = dataUrl.match(/^data:(image\/(png|jpeg|jpg));base64,([A-Za-z0-9+/=]+)$/i);
   if (!m) throw new Error("Imagem inválida (use PNG/JPG)");
@@ -115,41 +115,38 @@ async function embedImageFromDataUrl(pdf: PDFDocument, dataUrl: string) {
 function layoutBackground(page: any, img: any, mode: "cover" | "contain" | "stretch") {
   const { width: pw, height: ph } = page.getSize();
   const iw = img.width, ih = img.height;
-  if (mode === "stretch") {
-    page.drawImage(img, { x: 0, y: 0, width: pw, height: ph });
-    return;
-  }
+  if (mode === "stretch") { page.drawImage(img, { x: 0, y: 0, width: pw, height: ph }); return; }
   const pr = pw / ph, ir = iw / ih;
   let w = pw, h = ph;
-  if (mode === "cover") {
-    if (ir > pr) { h = ph; w = h * ir; } else { w = pw; h = w / ir; }
-  } else { // contain
-    if (ir > pr) { w = pw; h = w / ir; } else { h = ph; w = h * ir; }
-  }
+  if (mode === "cover") { if (ir > pr) { h = ph; w = h * ir; } else { w = pw; h = w / ir; } }
+  else { if (ir > pr) { w = pw; h = w / ir; } else { h = ph; w = h * ir; } }
   const x = (pw - w) / 2, y = (ph - h) / 2;
   page.drawImage(img, { x, y, width: w, height: h });
 }
-function placeLogo(page: any, img: any, opt: { position: string; widthPx: number; margin?: number }) {
-  const { width: pw, height: ph } = page.getSize();
-  const m = Math.max(0, Number(opt.margin ?? 16));
-  const w = Math.max(40, Math.min(600, Number(opt.widthPx || 120)));
+function measureLogo(img: any, widthPx?: number) {
+  const w = Math.max(40, Math.min(600, Number(widthPx || 120)));
   const ratio = img.height / img.width;
   const h = w * ratio;
-  let x = 0, y = 0;
-  const pos = opt.position as string;
-  const centerX = (pw - w) / 2, centerY = (ph - h) / 2;
-  if (pos === "top-left")        { x = m;           y = ph - h - m; }
-  else if (pos === "top-center") { x = centerX;     y = ph - h - m; }
-  else if (pos === "top-right")  { x = pw - w - m;  y = ph - h - m; }
-  else if (pos === "center-left"){ x = m;           y = centerY; }
-  else if (pos === "center")     { x = centerX;     y = centerY; }
-  else if (pos === "center-right"){x = pw - w - m;  y = centerY; }
-  else if (pos === "bottom-left"){ x = m;           y = m; }
-  else if (pos === "bottom-center"){ x = centerX;   y = m; }
-  else if (pos === "bottom-right"){ x = pw - w - m; y = m; }
-  page.drawImage(img, { x, y, width: w, height: h });
+  return { w, h };
+}
+function placeLogosGroup(page: any, logos: Array<{ img: any; widthPx?: number; margin?: number }>, position: string) {
+  if (!logos.length) return;
+  const { width: pw, height: ph } = page.getSize();
+  const sizes = logos.map(l => measureLogo(l.img, l.widthPx));
+  const maxH = Math.max(...sizes.map(s => s.h));
+  const baseMargin = Math.max(0, Number(logos[0]?.margin ?? 16));
+  const gap = Math.max(4, Math.min(64, baseMargin));
+  const totalW = sizes.reduce((a, s) => a + s.w, 0) + gap * (logos.length - 1);
+  const centerX = (pw - totalW) / 2, centerY = (ph - maxH) / 2;
+  let startX = 0, y = 0;
+  if (position.startsWith("top-")) { y = ph - maxH - baseMargin; startX = position.endsWith("left") ? baseMargin : position.endsWith("right") ? pw - totalW - baseMargin : centerX; }
+  else if (position.startsWith("bottom-")) { y = baseMargin; startX = position.endsWith("left") ? baseMargin : position.endsWith("right") ? pw - totalW - baseMargin : centerX; }
+  else { y = centerY; startX = position.endsWith("left") ? baseMargin : position.endsWith("right") ? pw - totalW - baseMargin : centerX; }
+  let x = startX;
+  logos.forEach((l, i) => { const { w, h } = sizes[i]; page.drawImage(l.img, { x, y, width: w, height: h }); x += w + gap; });
 }
 
+/* ===== PDF por aluno ===== */
 async function buildSingleStudentPDF(ev: EventPayload, st: Student): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
@@ -170,7 +167,7 @@ async function buildSingleStudentPDF(ev: EventPayload, st: Student): Promise<Uin
   const { width, height } = page.getSize();
   const margin = 36, left = margin, right = margin;
 
-  // ARTES
+  // Artes (fundo + logos)
   const hasBg = !!ev?.assets?.bg?.dataUrl;
   try {
     const assets = ev?.assets;
@@ -179,19 +176,26 @@ async function buildSingleStudentPDF(ev: EventPayload, st: Student): Promise<Uin
       layoutBackground(page, img, assets.bg.mode || "cover");
     }
     if (Array.isArray(assets?.logos)) {
+      const loaded: Array<{ position: string; widthPx?: number; margin?: number; img: any }> = [];
       for (const lg of assets.logos) {
         if (!lg?.dataUrl) continue;
-        const { img } = await embedImageFromDataUrl(pdf, lg.dataUrl);
-        placeLogo(page, img, {
-          position: lg.position || "top-right",
-          widthPx: lg.widthPx || 120,
-          margin: lg.margin,
-        });
+        try {
+          const { img } = await embedImageFromDataUrl(pdf, lg.dataUrl);
+          loaded.push({ position: lg.position || "top-right", widthPx: lg.widthPx || 120, margin: lg.margin, img });
+        } catch {}
+      }
+      const byPos: Record<string, Array<{ img: any; widthPx?: number; margin?: number }>> = {};
+      for (const item of loaded) {
+        byPos[item.position] ||= [];
+        byPos[item.position].push({ img: item.img, widthPx: item.widthPx, margin: item.margin });
+      }
+      for (const [pos, group] of Object.entries(byPos)) {
+        placeLogosGroup(page, group, pos);
       }
     }
   } catch {}
 
-  // padrão (moldura + faixas) só se NÃO houver fundo
+  // Padrão apenas se não houver fundo
   if (!hasBg) {
     page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
     page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
@@ -347,7 +351,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     for (const st of validos) {
       const pdfBytes = await buildSingleStudentPDF(ev, st);
-      const base = sanitizeFilename(st.aluno_nome || `aluno_\${++counter}`);
+      const base = sanitizeFilename(st.aluno_nome || `aluno_${++counter}`);
       zip.file(`${base}.pdf`, pdfBytes);
     }
 
@@ -357,7 +361,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="certificados-\${params.id}.zip"`,
+        "Content-Disposition": `attachment; filename="certificados-${params.id}.zip"`,
         "Cache-Control": "no-store",
       },
     });

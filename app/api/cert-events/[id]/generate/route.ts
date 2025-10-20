@@ -121,25 +121,47 @@ function layoutBackground(page: any, img: any, mode: "cover" | "contain" | "stre
   const x = (pw - w) / 2, y = (ph - h) / 2;
   page.drawImage(img, { x, y, width: w, height: h });
 }
-function placeLogo(page: any, img: any, opt: { position: string; widthPx: number; margin?: number }) {
-  const { width: pw, height: ph } = page.getSize();
-  const m = Math.max(0, Number(opt.margin ?? 16));
-  const w = Math.max(40, Math.min(600, Number(opt.widthPx || 120)));
+/** Calcula (w,h) preservando proporção, com clamp de largura */
+function measureLogo(img: any, widthPx?: number) {
+  const w = Math.max(40, Math.min(600, Number(widthPx || 120)));
   const ratio = img.height / img.width;
   const h = w * ratio;
-  let x = 0, y = 0;
-  const pos = opt.position as string;
-  const centerX = (pw - w) / 2, centerY = (ph - h) / 2;
-  if (pos === "top-left")        { x = m;           y = ph - h - m; }
-  else if (pos === "top-center") { x = centerX;     y = ph - h - m; }
-  else if (pos === "top-right")  { x = pw - w - m;  y = ph - h - m; }
-  else if (pos === "center-left"){ x = m;           y = centerY; }
-  else if (pos === "center")     { x = centerX;     y = centerY; }
-  else if (pos === "center-right"){x = pw - w - m;  y = centerY; }
-  else if (pos === "bottom-left"){ x = m;           y = m; }
-  else if (pos === "bottom-center"){ x = centerX;   y = m; }
-  else if (pos === "bottom-right"){ x = pw - w - m; y = m; }
-  page.drawImage(img, { x, y, width: w, height: h });
+  return { w, h };
+}
+/** Desenha um grupo de logos com MESMA posição, lado a lado (sem sobrepor) */
+function placeLogosGroup(page: any, logos: Array<{ img: any; widthPx?: number; margin?: number }>, position: string) {
+  if (!logos.length) return;
+  const { width: pw, height: ph } = page.getSize();
+  const sizes = logos.map(l => measureLogo(l.img, l.widthPx));
+  const maxH = Math.max(...sizes.map(s => s.h));
+  const baseMargin = Math.max(0, Number(logos[0]?.margin ?? 16));
+  const gap = Math.max(4, Math.min(64, baseMargin));
+  const totalW = sizes.reduce((acc, s) => acc + s.w, 0) + gap * (logos.length - 1);
+  const centerX = (pw - totalW) / 2;
+  const centerY = (ph - maxH) / 2;
+  let startX = 0, y = 0;
+  if (position.startsWith("top-")) {
+    y = ph - maxH - baseMargin;
+    if (position.endsWith("left")) startX = baseMargin;
+    else if (position.endsWith("right")) startX = pw - totalW - baseMargin;
+    else startX = centerX; // top-center
+  } else if (position.startsWith("bottom-")) {
+    y = baseMargin;
+    if (position.endsWith("left")) startX = baseMargin;
+    else if (position.endsWith("right")) startX = pw - totalW - baseMargin;
+    else startX = centerX; // bottom-center
+  } else {
+    y = centerY;
+    if (position.endsWith("left")) startX = baseMargin;
+    else if (position.endsWith("right")) startX = pw - totalW - baseMargin;
+    else startX = centerX; // center
+  }
+  let x = startX;
+  logos.forEach((l, i) => {
+    const { w, h } = sizes[i];
+    page.drawImage(l.img, { x, y, width: w, height: h });
+    x += w + gap;
+  });
 }
 
 /* ===== PDF ===== */
@@ -166,7 +188,7 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const { width, height } = page.getSize();
     const margin = 36, left = margin, right = margin;
 
-    // ===== ARTES (opcional) =====
+    // ===== ARTES (fundo + logos) =====
     const hasBg = !!ev?.assets?.bg?.dataUrl;
     try {
       const assets = ev?.assets;
@@ -175,21 +197,28 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
         layoutBackground(page, img, assets.bg.mode || "cover");
       }
       if (Array.isArray(assets?.logos)) {
+        const loaded: Array<{ position: string; widthPx?: number; margin?: number; img: any }> = [];
         for (const lg of assets.logos) {
           if (!lg?.dataUrl) continue;
-          const { img } = await embedImageFromDataUrl(pdf, lg.dataUrl);
-          placeLogo(page, img, {
-            position: lg.position || "top-right",
-            widthPx: lg.widthPx || 120,
-            margin: lg.margin,
-          });
+          try {
+            const { img } = await embedImageFromDataUrl(pdf, lg.dataUrl);
+            loaded.push({ position: lg.position || "top-right", widthPx: lg.widthPx || 120, margin: lg.margin, img });
+          } catch {}
+        }
+        const byPos: Record<string, Array<{ img: any; widthPx?: number; margin?: number }>> = {};
+        for (const item of loaded) {
+          byPos[item.position] ||= [];
+          byPos[item.position].push({ img: item.img, widthPx: item.widthPx, margin: item.margin });
+        }
+        for (const [pos, group] of Object.entries(byPos)) {
+          placeLogosGroup(page, group, pos);
         }
       }
     } catch {
       // falha em artes não bloqueia a geração
     }
 
-    // ===== padrão visual (moldura + faixas) APENAS se NÃO houver fundo anexado =====
+    // ===== padrão visual (moldura + faixas) APENAS se NÃO houver fundo =====
     if (!hasBg) {
       page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
       page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
@@ -282,7 +311,6 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const contentX2 = left2 + 24;
     const contentW2 = w2 - (contentX2 + right2 + 24);
 
-    // moldura do verso sempre bem sutil (não conflita com fundo da frente)
     page2.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.85,0.85,0.85), borderWidth: 0.8 });
 
     let y2 = h2 - 82;
@@ -354,7 +382,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="certificados-\${params.id}.pdf"`,
+        "Content-Disposition": `attachment; filename="certificados-${params.id}.pdf"`,
         "Cache-Control": "no-store",
       },
     });
