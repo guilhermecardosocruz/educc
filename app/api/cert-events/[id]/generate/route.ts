@@ -166,7 +166,8 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const { width, height } = page.getSize();
     const margin = 36, left = margin, right = margin;
 
-    // ===== ARTES (opcional; não interfere se ausentes) =====
+    // ===== ARTES (opcional) =====
+    const hasBg = !!ev?.assets?.bg?.dataUrl;
     try {
       const assets = ev?.assets;
       if (assets?.bg?.dataUrl) {
@@ -188,10 +189,12 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
       // falha em artes não bloqueia a geração
     }
 
-    // moldura e faixas (mantido)
-    page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
-    page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
-    page.drawRectangle({ x: width - 105, y: height - 80, width: 105, height: 32, color: green });
+    // ===== padrão visual (moldura + faixas) APENAS se NÃO houver fundo anexado =====
+    if (!hasBg) {
+      page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
+      page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
+      page.drawRectangle({ x: width - 105, y: height - 80, width: 105, height: 32, color: green });
+    }
 
     // título
     const spacedTitle = "C E R T I F I C A D O";
@@ -279,6 +282,7 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const contentX2 = left2 + 24;
     const contentW2 = w2 - (contentX2 + right2 + 24);
 
+    // moldura do verso sempre bem sutil (não conflita com fundo da frente)
     page2.drawRectangle({ x: m2 / 2, y: m2 / 2, width: w2 - m2, height: h2 - m2, borderColor: rgb(0.85,0.85,0.85), borderWidth: 0.8 });
 
     let y2 = h2 - 82;
@@ -350,7 +354,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="certificados-${params.id}.pdf"`,
+        "Content-Disposition": `attachment; filename="certificados-\${params.id}.pdf"`,
         "Cache-Control": "no-store",
       },
     });
