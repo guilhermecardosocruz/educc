@@ -23,6 +23,20 @@ type EventPayload = {
   sign2_name?: string; sign2_role?: string;
   qr_url?: string;
   autorizacao_texto?: string;
+  /** Artes opcionais (fundo/logos) */
+  assets?: {
+    bg?: { dataUrl: string; mode: "cover" | "contain" | "stretch" };
+    logos?: {
+      label?: "prefeitura" | "escola" | "brasao" | "outro";
+      dataUrl: string;
+      position:
+        | "top-left" | "top-center" | "top-right"
+        | "center-left" | "center" | "center-right"
+        | "bottom-left" | "bottom-center" | "bottom-right";
+      widthPx: number;
+      margin?: number;
+    }[];
+  };
 };
 
 type Student = {
@@ -33,7 +47,7 @@ type Student = {
   observacoes?: string;
 };
 
-/* helpers */
+/* ===== Helpers existentes ===== */
 function wrapTextByWidth({ text, font, size, maxWidth }: { text: string; font: PDFFont; size: number; maxWidth: number }): string[] {
   const words = (text || "").trim().split(/\s+/);
   const lines: string[] = [];
@@ -80,6 +94,55 @@ function formatBR(iso?: string | null): string | null {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/* ===== NOVOS helpers: artes (fundo/logos) ===== */
+async function embedImageFromDataUrl(pdf: PDFDocument, dataUrl: string) {
+  const m = dataUrl.match(/^data:(image\/(png|jpeg|jpg));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!m) throw new Error("Imagem inválida (use PNG/JPG)");
+  const mime = m[1].toLowerCase();
+  const b64 = m[3];
+  const bytes = Buffer.from(b64, "base64");
+  if (mime.includes("png")) return { img: await pdf.embedPng(bytes), type: "png" as const };
+  return { img: await pdf.embedJpg(bytes), type: "jpg" as const };
+}
+function layoutBackground(page: any, img: any, mode: "cover" | "contain" | "stretch") {
+  const { width: pw, height: ph } = page.getSize();
+  const iw = img.width, ih = img.height;
+  if (mode === "stretch") {
+    page.drawImage(img, { x: 0, y: 0, width: pw, height: ph });
+    return;
+  }
+  const pr = pw / ph, ir = iw / ih;
+  let w = pw, h = ph;
+  if (mode === "cover") {
+    if (ir > pr) { h = ph; w = h * ir; } else { w = pw; h = w / ir; }
+  } else { // contain
+    if (ir > pr) { w = pw; h = w / ir; } else { h = ph; w = h * ir; }
+  }
+  const x = (pw - w) / 2, y = (ph - h) / 2;
+  page.drawImage(img, { x, y, width: w, height: h });
+}
+function placeLogo(page: any, img: any, opt: { position: string; widthPx: number; margin?: number }) {
+  const { width: pw, height: ph } = page.getSize();
+  const m = Math.max(0, Number(opt.margin ?? 16));
+  const w = Math.max(40, Math.min(600, Number(opt.widthPx || 120)));
+  const ratio = img.height / img.width;
+  const h = w * ratio;
+  let x = 0, y = 0;
+  const pos = opt.position as string;
+  const centerX = (pw - w) / 2, centerY = (ph - h) / 2;
+  if (pos === "top-left")        { x = m;           y = ph - h - m; }
+  else if (pos === "top-center") { x = centerX;     y = ph - h - m; }
+  else if (pos === "top-right")  { x = pw - w - m;  y = ph - h - m; }
+  else if (pos === "center-left"){ x = m;           y = centerY; }
+  else if (pos === "center")     { x = centerX;     y = centerY; }
+  else if (pos === "center-right"){x = pw - w - m;  y = centerY; }
+  else if (pos === "bottom-left"){ x = m;           y = m; }
+  else if (pos === "bottom-center"){ x = centerX;   y = m; }
+  else if (pos === "bottom-right"){ x = pw - w - m; y = m; }
+  page.drawImage(img, { x, y, width: w, height: h });
+}
+
+/* ===== PDF ===== */
 async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
@@ -103,23 +166,45 @@ async function buildCertificatesPDF(ev: EventPayload, alunos: Student[]): Promis
     const { width, height } = page.getSize();
     const margin = 36, left = margin, right = margin;
 
-    // moldura e faixas
+    // ===== ARTES (opcional; não interfere se ausentes) =====
+    try {
+      const assets = ev?.assets;
+      if (assets?.bg?.dataUrl) {
+        const { img } = await embedImageFromDataUrl(pdf, assets.bg.dataUrl);
+        layoutBackground(page, img, assets.bg.mode || "cover");
+      }
+      if (Array.isArray(assets?.logos)) {
+        for (const lg of assets.logos) {
+          if (!lg?.dataUrl) continue;
+          const { img } = await embedImageFromDataUrl(pdf, lg.dataUrl);
+          placeLogo(page, img, {
+            position: lg.position || "top-right",
+            widthPx: lg.widthPx || 120,
+            margin: lg.margin,
+          });
+        }
+      }
+    } catch {
+      // falha em artes não bloqueia a geração
+    }
+
+    // moldura e faixas (mantido)
     page.drawRectangle({ x: margin / 2, y: margin / 2, width: width - margin, height: height - margin, borderColor: rgb(0.75,0.75,0.75), borderWidth: 0.8 });
     page.drawRectangle({ x: width - 150, y: height - 48, width: 150, height: 48, color: red });
     page.drawRectangle({ x: width - 105, y: height - 80, width: 105, height: 32, color: green });
 
-    // título com espaçamento manual: "C E R T I F I C A D O"
+    // título
     const spacedTitle = "C E R T I F I C A D O";
     const titleSize = 34;
     const yTopTitle = height - 104;
     drawCenteredText(page, spacedTitle, yTopTitle, titleSize, fontBold, red);
 
-    // nome + CPF centralizados
+    // nome + CPF
     const yName = yTopTitle - 52;
     const nameLine = [st.aluno_nome.toUpperCase(), st.aluno_doc ? `- ${st.aluno_doc}` : ""].filter(Boolean).join(" ");
     drawCenteredText(page, nameLine, yName, 15, fontBold);
 
-    // área útil para centralizar verticalmente o parágrafo
+    // área útil para centralizar parágrafo
     const topLimit = yName - 24;
     const bottomLimit = 120;
     const usableHeight = topLimit - bottomLimit;

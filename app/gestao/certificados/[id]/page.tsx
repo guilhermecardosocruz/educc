@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import EditCertStudentModal, { CertStudent as ModalStudent } from "@/components/EditCertStudentModal";
+import CertAssetsUploader, { type CertAssets } from "@/components/CertAssetsUploader";
 
 type EventItem = {
   id: string;
@@ -24,6 +25,8 @@ type EventItem = {
   autorizacao_texto?: string;
   responsavel?: string;
   observacoes?: string;
+  /** Artes opcionais: fundo + logos/brasões (dataURL) */
+  assets?: CertAssets;
 };
 
 type Student = {
@@ -373,7 +376,16 @@ export default function CertEventPage() {
             </div>
           </div>
 
-          {/* Logos/brasões */}
+          {/* Artes do certificado (Fundo + Logos/Brasões) */}
+          <div className="mt-2">
+            <label className="block text-sm font-medium mb-2">Artes do certificado</label>
+            <CertAssetsUploader
+              value={ev.assets}
+              onChange={(assets) => persist({ ...ev, assets })}
+            />
+          </div>
+
+          {/* Logos/brasões (legacy - mantido) */}
           <div>
             <label className="block text-sm font-medium mb-1">Logos/Brasões</label>
             <div className="flex flex-wrap gap-4 text-sm">
